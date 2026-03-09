@@ -779,7 +779,22 @@ export default function App() {
         checkPageBreak(40);
         doc.setFont(pdfFont, 'bold');
         doc.setFontSize(fontSize - 1);
-        doc.text(exp.role, margin, y);
+        
+        if (exp.link) {
+          const linkUrl = exp.link.startsWith('http') ? exp.link : `https://${exp.link}`;
+          doc.setTextColor(0, 0, 255);
+          doc.text(exp.role, margin, y);
+          const roleWidth = doc.getTextWidth(exp.role);
+          doc.link(margin, y - 7, roleWidth, 10, { url: linkUrl });
+          doc.setDrawColor(0, 0, 255);
+          doc.line(margin, y + 1, margin + roleWidth, y + 1);
+          doc.setTextColor(0, 0, 0);
+          doc.setDrawColor(0, 0, 0);
+        } else {
+          doc.text(exp.role, margin, y);
+        }
+        
+        doc.setFont(pdfFont, 'normal');
         doc.text(abbreviateDate(exp.date), pageWidth - margin, y, { align: 'right' });
         y += 12;
         doc.setFont(pdfFont, 'italic');
@@ -848,6 +863,53 @@ export default function App() {
         y += 8;
       });
     }
+
+    // Custom Sections
+    (resumeData.customSections || []).forEach(section => {
+      addSection(section.title);
+      section.items.forEach(item => {
+        checkPageBreak(40);
+        doc.setFont(pdfFont, 'bold');
+        doc.setFontSize(fontSize - 1);
+        
+        if (item.link) {
+          const linkUrl = item.link.startsWith('http') ? item.link : `https://${item.link}`;
+          doc.setTextColor(0, 0, 255);
+          doc.text(item.title, margin, y);
+          const titleWidth = doc.getTextWidth(item.title);
+          doc.link(margin, y - 7, titleWidth, 10, { url: linkUrl });
+          doc.setDrawColor(0, 0, 255);
+          doc.line(margin, y + 1, margin + titleWidth, y + 1);
+          doc.setTextColor(0, 0, 0);
+          doc.setDrawColor(0, 0, 0);
+        } else {
+          doc.text(item.title, margin, y);
+        }
+        
+        doc.setFont(pdfFont, 'normal');
+        doc.text(abbreviateDate(item.date || ''), pageWidth - margin, y, { align: 'right' });
+        y += 12;
+        
+        if (item.subtitle) {
+          doc.setFont(pdfFont, 'italic');
+          doc.text(item.subtitle, margin, y);
+          y += 12;
+        }
+        
+        doc.setFont(pdfFont, 'normal');
+        item.bullets.forEach(bullet => {
+          if (!bullet) return;
+          const lines = doc.splitTextToSize(bullet, pageWidth - (margin * 2) - 25);
+          checkPageBreak(lines.length * 12);
+          doc.text('•', margin + 10, y);
+          lines.forEach((line: string, index: number) => {
+            doc.text(line, margin + 20, y + (index * 12));
+          });
+          y += (lines.length * 12);
+        });
+        y += 8;
+      });
+    });
 
     const downloadLink = doc.output('bloburl');
     window.open(downloadLink, '_blank');
@@ -1431,6 +1493,16 @@ export default function App() {
                               className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
                             />
                             <input 
+                              placeholder="Role Link (e.g. company.com)"
+                              value={exp.link || ''}
+                              onChange={(e) => {
+                                const newExp = [...resumeData.experience];
+                                newExp[i].link = e.target.value;
+                                setResumeData({...resumeData, experience: newExp});
+                              }}
+                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                            />
+                            <input 
                               placeholder="Date"
                               value={exp.date}
                               onChange={(e) => {
@@ -1672,7 +1744,17 @@ export default function App() {
                                       newSections[i].items[j].subtitle = e.target.value;
                                       setResumeData({...resumeData, customSections: newSections});
                                     }}
-                                    className="col-span-2 px-3 py-2 bg-stone-50 border border-stone-100 rounded-lg text-sm italic"
+                                    className="px-3 py-2 bg-stone-50 border border-stone-100 rounded-lg text-sm italic"
+                                  />
+                                  <input 
+                                    placeholder="Link (Optional)"
+                                    value={item.link || ''}
+                                    onChange={(e) => {
+                                      const newSections = [...(resumeData.customSections || [])];
+                                      newSections[i].items[j].link = e.target.value;
+                                      setResumeData({...resumeData, customSections: newSections});
+                                    }}
+                                    className="col-span-2 px-3 py-2 bg-stone-50 border border-stone-100 rounded-lg text-sm"
                                   />
                                 </div>
 

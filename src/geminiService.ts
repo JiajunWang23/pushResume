@@ -58,6 +58,7 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
                 role: { type: Type.STRING },
                 date: { type: Type.STRING },
                 company: { type: Type.STRING },
+                link: { type: Type.STRING, description: "Relevant URL for the company or role if available" },
                 bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
               }
             }
@@ -72,6 +73,28 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
                 date: { type: Type.STRING },
                 link: { type: Type.STRING, description: "Project URL or GitHub repository link if available" },
                 bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
+              }
+            }
+          },
+          customSections: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      title: { type: Type.STRING },
+                      subtitle: { type: Type.STRING },
+                      date: { type: Type.STRING },
+                      link: { type: Type.STRING, description: "Relevant URL for this item if available" },
+                      bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    }
+                  }
+                }
               }
             }
           }

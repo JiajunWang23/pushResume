@@ -49,6 +49,7 @@ export interface ResumeData {
     date: string;
     company: string;
     bullets: string[];
+    link?: string;
   }>;
   projects: Array<{
     name: string;
@@ -70,6 +71,7 @@ export interface ResumeData {
       subtitle?: string;
       date?: string;
       bullets: string[];
+      link?: string;
     }>;
   }>;
   modifications?: Modification[];
@@ -98,7 +100,8 @@ export const ensureResumeData = (data: any): ResumeData => {
       role: e.role || "",
       date: e.date || "",
       company: e.company || "",
-      bullets: Array.isArray(e.bullets) ? e.bullets : []
+      bullets: Array.isArray(e.bullets) ? e.bullets : [],
+      link: e.link || ""
     })) : [],
     projects: Array.isArray(data?.projects) ? data.projects.map((p: any) => ({
       name: p.name || "",
@@ -119,7 +122,8 @@ export const ensureResumeData = (data: any): ResumeData => {
         title: i.title || "",
         subtitle: i.subtitle || "",
         date: i.date || "",
-        bullets: Array.isArray(i.bullets) ? i.bullets : []
+        bullets: Array.isArray(i.bullets) ? i.bullets : [],
+        link: i.link || ""
       })) : []
     })) : [],
     modifications: Array.isArray(data?.modifications) ? data.modifications : [],
