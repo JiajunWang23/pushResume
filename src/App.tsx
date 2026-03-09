@@ -354,7 +354,7 @@ export default function App() {
     const errorMsg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
     
     if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('quota')) {
-      if (confirm('You have exceeded the Gemini API quota. Would you like to set your own API key to continue? (Requires a paid Google Cloud project)')) {
+      if (confirm('You have exceeded the API quota. Would you like to set your own API key to continue? (Requires a paid cloud project)')) {
         handleOpenKeyDialog();
       }
     } else {
@@ -968,7 +968,7 @@ export default function App() {
                 <path d="M14 8l3-3m0 0h-3m3 0v3" className="text-white/80" />
               </svg>
             </div>
-            <h1 className="font-bold text-xl leading-none">pushResume</h1>
+            <h1 className="font-bold text-xl leading-none">PushResume</h1>
           </div>
 
           <div className="flex items-center gap-4">
@@ -1049,7 +1049,7 @@ export default function App() {
                   className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-full border border-amber-100 hover:bg-amber-100 transition-colors text-xs font-bold"
                 >
                   <AlertCircle size={14} />
-                  Set API Key (Quota Fix)
+                  API Settings
                 </button>
               )}
               {isOverPageLimit && (
@@ -1134,6 +1134,25 @@ export default function App() {
                     exit={{ opacity: 0, y: -10 }}
                     className="space-y-8"
                   >
+                    <div className="text-center py-10">
+                      <div className="w-20 h-20 bg-black rounded-3xl flex items-center justify-center text-white shadow-2xl mb-6 mx-auto">
+                        <svg 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2.5" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          className="w-10 h-10"
+                        >
+                          <path d="M7 21V3h7a5 5 0 0 1 0 10H7" />
+                          <path d="M14 8l3-3m0 0h-3m3 0v3" className="text-white/80" />
+                        </svg>
+                      </div>
+                      <h2 className="text-3xl font-bold">PushResume</h2>
+                      <p className="text-stone-500 max-w-xs mx-auto mt-2">Free Resume Review. Professional LaTeX-style resume builder with ATS scoring and JD optimization.</p>
+                    </div>
+
                     <div 
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={handleFileUpload}
