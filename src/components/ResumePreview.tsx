@@ -119,7 +119,13 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
             <div key={i} className="mb-2">
               <div className="flex justify-between items-baseline text-[11pt] gap-2">
                 <div className="flex items-baseline gap-1.5 min-w-0">
-                  <span className="font-bold shrink-0">{proj.name}</span>
+                  {proj.link ? (
+                    <a href={proj.link.startsWith('http') ? proj.link : `https://${proj.link}`} target="_blank" rel="noopener noreferrer" className="font-bold shrink-0 underline decoration-1 underline-offset-2">
+                      {proj.name}
+                    </a>
+                  ) : (
+                    <span className="font-bold shrink-0">{proj.name}</span>
+                  )}
                   <span className="text-gray-400">|</span>
                   <span className="italic">{proj.tech}</span>
                 </div>

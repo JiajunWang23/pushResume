@@ -809,7 +809,22 @@ export default function App() {
         checkPageBreak(40);
         doc.setFont(pdfFont, 'bold');
         doc.setFontSize(fontSize - 1);
-        doc.text(proj.name, margin, y);
+        
+        if (proj.link) {
+          const linkUrl = proj.link.startsWith('http') ? proj.link : `https://${proj.link}`;
+          doc.setTextColor(0, 0, 255);
+          doc.text(proj.name, margin, y);
+          const nameWidth = doc.getTextWidth(proj.name);
+          doc.link(margin, y - 7, nameWidth, 10, { url: linkUrl });
+          // Draw underline
+          doc.setDrawColor(0, 0, 255);
+          doc.line(margin, y + 1, margin + nameWidth, y + 1);
+          doc.setTextColor(0, 0, 0);
+          doc.setDrawColor(0, 0, 0);
+        } else {
+          doc.text(proj.name, margin, y);
+        }
+        
         const nameWidth = doc.getTextWidth(proj.name);
         doc.setFont(pdfFont, 'normal');
         doc.text(' | ', margin + nameWidth, y);
@@ -1515,6 +1530,16 @@ export default function App() {
                               className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
                             />
                             <input 
+                              placeholder="Project Link (e.g. github.com/user/repo)"
+                              value={proj.link || ''}
+                              onChange={(e) => {
+                                const newProj = [...resumeData.projects];
+                                newProj[i].link = e.target.value;
+                                setResumeData({...resumeData, projects: newProj});
+                              }}
+                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                            />
+                            <input 
                               placeholder="Date"
                               value={proj.date}
                               onChange={(e) => {
@@ -1522,7 +1547,7 @@ export default function App() {
                                 newProj[i].date = e.target.value;
                                 setResumeData({...resumeData, projects: newProj});
                               }}
-                              className="col-span-2 px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
                             />
                           </div>
                           <div className="space-y-2">

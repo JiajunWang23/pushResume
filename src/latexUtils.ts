@@ -64,7 +64,7 @@ export const generateLatex = (data: ResumeData): string => {
 
   const projectsStr = (data.projects || []).map(proj => `
       \\resumeProjectHeading
-          {\\textbf{${escapeLatex(proj.name)}} $|$ \\emph{${escapeLatex(proj.tech)}}}{${escapeLatex(proj.date)}}
+          {${proj.link ? `\\href{${proj.link.startsWith('http') ? proj.link : `https://${proj.link}`}}{\\underline{\\textbf{${escapeLatex(proj.name)}}}}` : `\\textbf{${escapeLatex(proj.name)}}`} $|$ \\emph{${escapeLatex(proj.tech)}}}{${escapeLatex(proj.date)}}
           \\resumeItemListStart
             ${proj.bullets.filter(b => b).map(b => `\\resumeItem{${escapeLatex(b)}}`).join("\n            ")}
           \\resumeItemListEnd`).join("");

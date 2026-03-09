@@ -70,6 +70,7 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
                 name: { type: Type.STRING },
                 tech: { type: Type.STRING },
                 date: { type: Type.STRING },
+                link: { type: Type.STRING, description: "Project URL or GitHub repository link if available" },
                 bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
               }
             }

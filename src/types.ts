@@ -55,6 +55,7 @@ export interface ResumeData {
     tech: string;
     date: string;
     bullets: string[];
+    link?: string;
   }>;
   sectionTitles?: {
     education: string;
@@ -103,7 +104,8 @@ export const ensureResumeData = (data: any): ResumeData => {
       name: p.name || "",
       tech: p.tech || "",
       date: p.date || "",
-      bullets: Array.isArray(p.bullets) ? p.bullets : []
+      bullets: Array.isArray(p.bullets) ? p.bullets : [],
+      link: p.link || ""
     })) : [],
     sectionTitles: {
       education: data?.sectionTitles?.education || "Education",
@@ -188,6 +190,7 @@ export const INITIAL_RESUME: ResumeData = {
       name: "Gitlytics",
       tech: "Python, Flask, React, PostgreSQL, Docker",
       date: "June 2020 -- Present",
+      link: "https://github.com/jake/gitlytics",
       bullets: [
         "Architected a full-stack analytics platform with a Flask REST API backend and React frontend, supporting real-time GitHub repository insights for 50+ users",
         "Integrated GitHub OAuth 2.0 to securely fetch and process repository data, enabling per-user dashboards with granular contribution breakdowns",
