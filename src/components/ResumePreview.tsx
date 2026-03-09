@@ -50,82 +50,90 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
       </div>
 
       {/* Education */}
-      <section id="preview-education" className="mb-3">
-        <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
-          Education
-        </h2>
-        {data.education?.map((edu, i) => (
-          <div key={i} className="mb-2">
-            <div className="flex justify-between font-bold text-[11pt]">
-              <span>{edu.school}</span>
+      {data.education && data.education.length > 0 && (
+        <section id="preview-education" className="mb-3">
+          <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
+            {data.sectionTitles?.education || 'Education'}
+          </h2>
+          {data.education.map((edu, i) => (
+            <div key={i} className="mb-2">
+              <div className="flex justify-between font-bold text-[11pt]">
+                <span>{edu.school}</span>
+              </div>
+              <div className="flex justify-between italic text-[10.5pt]">
+                <span>{edu.degree}{edu.gpa ? `; GPA: ${edu.gpa}` : ''}</span>
+                <span>{abbreviateDate(edu.date)}</span>
+              </div>
             </div>
-            <div className="flex justify-between italic text-[10.5pt]">
-              <span>{edu.degree}</span>
-              <span>{abbreviateDate(edu.date)}</span>
-            </div>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
 
       {/* Skills */}
-      <section id="preview-skills" className="mb-3">
-        <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
-          Technical Skills
-        </h2>
-        <div className="text-[10pt] space-y-0.5">
-          {data.skills.languages && <div><span className="font-bold">Languages:</span> {data.skills.languages}</div>}
-          {data.skills.frameworks && <div><span className="font-bold">Frameworks:</span> {data.skills.frameworks}</div>}
-          {data.skills.tools && <div><span className="font-bold">Developer Tools:</span> {data.skills.tools}</div>}
-          {data.skills.libraries && <div><span className="font-bold">Libraries:</span> {data.skills.libraries}</div>}
-        </div>
-      </section>
+      {(data.skills.languages || data.skills.frameworks || data.skills.tools || data.skills.libraries) && (
+        <section id="preview-skills" className="mb-3">
+          <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
+            {data.sectionTitles?.skills || 'Technical Skills'}
+          </h2>
+          <div className="text-[10pt] space-y-0.5">
+            {data.skills.languages && <div><span className="font-bold">Languages:</span> {data.skills.languages}</div>}
+            {data.skills.frameworks && <div><span className="font-bold">Frameworks:</span> {data.skills.frameworks}</div>}
+            {data.skills.tools && <div><span className="font-bold">Developer Tools:</span> {data.skills.tools}</div>}
+            {data.skills.libraries && <div><span className="font-bold">Libraries:</span> {data.skills.libraries}</div>}
+          </div>
+        </section>
+      )}
 
       {/* Experience */}
-      <section id="preview-experience" className="mb-3">
-        <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
-          Experience
-        </h2>
-        {data.experience?.map((exp, i) => (
-          <div key={i} className="mb-2">
-            <div className="flex justify-between font-bold text-[11pt]">
-              <span>{exp.role}</span>
-              <span>{abbreviateDate(exp.date)}</span>
+      {data.experience && data.experience.length > 0 && (
+        <section id="preview-experience" className="mb-3">
+          <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
+            {data.sectionTitles?.experience || 'Experience'}
+          </h2>
+          {data.experience.map((exp, i) => (
+            <div key={i} className="mb-2">
+              <div className="flex justify-between font-bold text-[11pt]">
+                <span>{exp.role}</span>
+                <span>{abbreviateDate(exp.date)}</span>
+              </div>
+              <div className="flex justify-between italic text-[10.5pt] mb-1">
+                <span>{exp.company}</span>
+              </div>
+              <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5">
+                {exp.bullets.map((bullet, j) => (
+                  bullet && <li key={j}>{bullet}</li>
+                ))}
+              </ul>
             </div>
-            <div className="flex justify-between italic text-[10.5pt] mb-1">
-              <span>{exp.company}</span>
-            </div>
-            <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5">
-              {exp.bullets.map((bullet, j) => (
-                bullet && <li key={j}>{bullet}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
 
       {/* Projects */}
-      <section id="preview-projects" className="mb-3">
-        <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
-          Projects
-        </h2>
-        {data.projects?.map((proj, i) => (
-          <div key={i} className="mb-2">
-            <div className="flex justify-between items-baseline text-[11pt] gap-2">
-              <div className="flex items-baseline gap-1.5 min-w-0">
-                <span className="font-bold shrink-0">{proj.name}</span>
-                <span className="text-gray-400">|</span>
-                <span className="italic">{proj.tech}</span>
+      {data.projects && data.projects.length > 0 && (
+        <section id="preview-projects" className="mb-3">
+          <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
+            {data.sectionTitles?.projects || 'Projects'}
+          </h2>
+          {data.projects.map((proj, i) => (
+            <div key={i} className="mb-2">
+              <div className="flex justify-between items-baseline text-[11pt] gap-2">
+                <div className="flex items-baseline gap-1.5 min-w-0">
+                  <span className="font-bold shrink-0">{proj.name}</span>
+                  <span className="text-gray-400">|</span>
+                  <span className="italic">{proj.tech}</span>
+                </div>
+                <span className="shrink-0 text-[10.5pt]">{abbreviateDate(proj.date)}</span>
               </div>
-              <span className="shrink-0 text-[10.5pt]">{abbreviateDate(proj.date)}</span>
+              <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5 mt-1">
+                {proj.bullets.map((bullet, j) => (
+                  bullet && <li key={j}>{bullet}</li>
+                ))}
+              </ul>
             </div>
-            <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5 mt-1">
-              {proj.bullets.map((bullet, j) => (
-                bullet && <li key={j}>{bullet}</li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      )}
 
       {/* Custom Sections */}
       {data.customSections?.map((section, i) => (

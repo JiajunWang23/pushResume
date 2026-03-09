@@ -36,6 +36,7 @@ export interface ResumeData {
     school: string;
     degree: string;
     date: string;
+    gpa?: string;
   }>;
   skills: {
     languages: string;
@@ -55,6 +56,12 @@ export interface ResumeData {
     date: string;
     bullets: string[];
   }>;
+  sectionTitles?: {
+    education: string;
+    experience: string;
+    projects: string;
+    skills: string;
+  };
   customSections?: Array<{
     title: string;
     items: Array<{
@@ -77,7 +84,8 @@ export const ensureResumeData = (data: any): ResumeData => {
     education: Array.isArray(data?.education) ? data.education.map((e: any) => ({
       school: e.school || "",
       degree: e.degree || "",
-      date: e.date || ""
+      date: e.date || "",
+      gpa: e.gpa || ""
     })) : [],
     skills: {
       languages: data?.skills?.languages || "",
@@ -97,6 +105,12 @@ export const ensureResumeData = (data: any): ResumeData => {
       date: p.date || "",
       bullets: Array.isArray(p.bullets) ? p.bullets : []
     })) : [],
+    sectionTitles: {
+      education: data?.sectionTitles?.education || "Education",
+      experience: data?.sectionTitles?.experience || "Experience",
+      projects: data?.sectionTitles?.projects || "Projects",
+      skills: data?.sectionTitles?.skills || "Technical Skills",
+    },
     customSections: Array.isArray(data?.customSections) ? data.customSections.map((s: any) => ({
       title: s.title || "",
       items: Array.isArray(s.items) ? s.items.map((i: any) => ({
@@ -120,12 +134,14 @@ export const INITIAL_RESUME: ResumeData = {
     {
       school: "Southwestern University",
       degree: "Bachelor of Arts in Computer Science, Minor in Business",
-      date: "Aug. 2018 -- May 2021"
+      date: "Aug. 2018 -- May 2021",
+      gpa: "3.9/4.0"
     },
     {
       school: "Blinn College",
       degree: "Associate's in Liberal Arts",
-      date: "Aug. 2014 -- May 2018"
+      date: "Aug. 2014 -- May 2018",
+      gpa: "4.0/4.0"
     }
   ],
   skills: {
@@ -180,5 +196,11 @@ export const INITIAL_RESUME: ResumeData = {
       ]
     }
   ],
+  sectionTitles: {
+    education: "Education",
+    experience: "Experience",
+    projects: "Projects",
+    skills: "Technical Skills"
+  },
   customSections: []
 };

@@ -52,7 +52,7 @@ export const generateLatex = (data: ResumeData): string => {
   const educationStr = (data.education || []).map(edu => `
     \\resumeSubheading
       {${escapeLatex(edu.school)}}{}
-      {${escapeLatex(edu.degree)}}{${escapeLatex(edu.date)}}`).join("");
+      {${escapeLatex(edu.degree)}${edu.gpa ? `; GPA: ${escapeLatex(edu.gpa)}` : ""}}{${escapeLatex(edu.date)}}`).join("");
 
   const experienceStr = (data.experience || []).map(exp => `
     \\resumeSubheading
@@ -196,14 +196,14 @@ export const generateLatex = (data: ResumeData): string => {
 \\end{center}
 
 %-----------EDUCATION-----------
-\\section{Education}
+\\section{${escapeLatex(data.sectionTitles?.education || "Education")}}
   \\resumeSubHeadingListStart
     ${educationStr}
   \\resumeSubHeadingListEnd
 
 
 %-----------PROGRAMMING SKILLS-----------
-\\section{Technical Skills}
+\\section{${escapeLatex(data.sectionTitles?.skills || "Technical Skills")}}
  \\begin{itemize}[leftmargin=0.15in, label={}]
     \\small{\\item{
      ${data.skills.languages ? `\\textbf{Languages}{: ${escapeLatex(data.skills.languages)}} \\\\` : ""}
@@ -215,14 +215,14 @@ export const generateLatex = (data: ResumeData): string => {
 
 
 %-----------EXPERIENCE-----------
-\\section{Experience}
+\\section{${escapeLatex(data.sectionTitles?.experience || "Experience")}}
   \\resumeSubHeadingListStart
     ${experienceStr}
   \\resumeSubHeadingListEnd
 
 
 %-----------PROJECTS-----------
-\\section{Projects}
+\\section{${escapeLatex(data.sectionTitles?.projects || "Projects")}}
     \\resumeSubHeadingListStart
       ${projectsStr}
     \\resumeSubHeadingListEnd

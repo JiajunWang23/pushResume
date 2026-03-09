@@ -715,7 +715,7 @@ export default function App() {
 
     // Education
     if (resumeData.education.length > 0) {
-      addSection('Education');
+      addSection(resumeData.sectionTitles?.education || 'Education');
       resumeData.education.forEach(edu => {
         checkPageBreak(30);
         doc.setFont(pdfFont, 'bold');
@@ -723,7 +723,8 @@ export default function App() {
         doc.text(edu.school, margin, y);
         y += 12;
         doc.setFont(pdfFont, 'italic');
-        doc.text(edu.degree, margin, y);
+        const degreeText = edu.gpa ? `${edu.degree}; GPA: ${edu.gpa}` : edu.degree;
+        doc.text(degreeText, margin, y);
         doc.text(abbreviateDate(edu.date), pageWidth - margin, y, { align: 'right' });
         y += 15;
       });
@@ -731,7 +732,7 @@ export default function App() {
 
     // Skills
     if (resumeData.skills.languages || resumeData.skills.frameworks || resumeData.skills.tools || resumeData.skills.libraries) {
-      addSection('Technical Skills');
+      addSection(resumeData.sectionTitles?.skills || 'Technical Skills');
       const skills = [
         { label: 'Languages', value: resumeData.skills.languages },
         { label: 'Frameworks', value: resumeData.skills.frameworks },
@@ -773,7 +774,7 @@ export default function App() {
 
     // Experience
     if (resumeData.experience.length > 0) {
-      addSection('Experience');
+      addSection(resumeData.sectionTitles?.experience || 'Experience');
       resumeData.experience.forEach(exp => {
         checkPageBreak(40);
         doc.setFont(pdfFont, 'bold');
@@ -803,7 +804,7 @@ export default function App() {
 
     // Projects
     if (resumeData.projects.length > 0) {
-      addSection('Projects');
+      addSection(resumeData.sectionTitles?.projects || 'Projects');
       resumeData.projects.forEach(proj => {
         checkPageBreak(40);
         doc.setFont(pdfFont, 'bold');
@@ -1193,7 +1194,13 @@ export default function App() {
 
                     {/* Skills */}
                     <section id="skills-section">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-4">Technical Skills</h3>
+                      <div className="flex items-center gap-4 mb-4">
+                        <input 
+                          value={resumeData.sectionTitles?.skills}
+                          onChange={(e) => setResumeData({...resumeData, sectionTitles: {...resumeData.sectionTitles!, skills: e.target.value}})}
+                          className="text-xs font-bold uppercase tracking-widest text-stone-400 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-black focus:text-black outline-none transition-all w-fit"
+                        />
+                      </div>
                       <div className="grid grid-cols-1 gap-4">
                         <div className="space-y-1">
                           <label className="text-xs font-medium text-stone-500 ml-1">Languages</label>
@@ -1233,7 +1240,11 @@ export default function App() {
                     {/* Education */}
                     <section id="education-section">
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Education</h3>
+                        <input 
+                          value={resumeData.sectionTitles?.education}
+                          onChange={(e) => setResumeData({...resumeData, sectionTitles: {...resumeData.sectionTitles!, education: e.target.value}})}
+                          className="text-xs font-bold uppercase tracking-widest text-stone-400 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-black focus:text-black outline-none transition-all w-fit"
+                        />
                         <div className="flex gap-4">
                           <button 
                             onClick={() => setResumeData(INITIAL_RESUME)}
@@ -1305,6 +1316,16 @@ export default function App() {
                               }}
                               className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
                             />
+                            <input 
+                              placeholder="GPA (e.g. 3.9/4.0)"
+                              value={edu.gpa || ''}
+                              onChange={(e) => {
+                                const newEdu = [...resumeData.education];
+                                newEdu[i].gpa = e.target.value;
+                                setResumeData({...resumeData, education: newEdu});
+                              }}
+                              className="col-span-2 px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                            />
                           </div>
                         </div>
                       ))}
@@ -1313,7 +1334,11 @@ export default function App() {
                     {/* Experience */}
                     <section id="experience-section">
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Experience</h3>
+                        <input 
+                          value={resumeData.sectionTitles?.experience}
+                          onChange={(e) => setResumeData({...resumeData, sectionTitles: {...resumeData.sectionTitles!, experience: e.target.value}})}
+                          className="text-xs font-bold uppercase tracking-widest text-stone-400 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-black focus:text-black outline-none transition-all w-fit"
+                        />
                         <button 
                           onClick={() => setResumeData({
                             ...resumeData, 
@@ -1408,7 +1433,11 @@ export default function App() {
                     {/* Projects */}
                     <section id="projects-section">
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Projects</h3>
+                        <input 
+                          value={resumeData.sectionTitles?.projects}
+                          onChange={(e) => setResumeData({...resumeData, sectionTitles: {...resumeData.sectionTitles!, projects: e.target.value}})}
+                          className="text-xs font-bold uppercase tracking-widest text-stone-400 bg-transparent border-b border-transparent hover:border-stone-200 focus:border-black focus:text-black outline-none transition-all w-fit"
+                        />
                         <button 
                           onClick={() => setResumeData({
                             ...resumeData, 
