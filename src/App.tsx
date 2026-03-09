@@ -26,6 +26,7 @@ import { INITIAL_RESUME, ResumeData, ensureResumeData, Suggestion } from './type
 import { ResumePreview } from './components/ResumePreview';
 import { generateLatex } from './latexUtils';
 import { parseResume, analyzeResume, optimizeResumeForJD, improveBullet } from './geminiService';
+import { generateLogo } from './logoGenerator';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ExternalHyperlink } from 'docx';
@@ -55,7 +56,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [jdAnalysis, setJdAnalysis] = useState<any>(null);
   const [jd, setJd] = useState('');
-  const [activeTab, setActiveTab] = useState<'import' | 'editor' | 'analysis' | 'jd' | 'latex'>('import');
+  const [activeTab, setActiveTab] = useState<'import' | 'editor' | 'analysis' | 'jd' | 'latex' | 'branding'>('import');
   const [hoveredSuggestion, setHoveredSuggestion] = useState<{ id: string, category: string } | null>(null);
   const [isImprovingBullet, setIsImprovingBullet] = useState<{i: number, j: number} | null>(null);
   const [editingSuggestion, setEditingSuggestion] = useState<{id: string, text: string, suggestedValue?: string} | null>(null);
@@ -63,6 +64,8 @@ export default function App() {
   const [isOverPageLimit, setIsOverPageLimit] = useState(false);
   const [overflowPercentage, setOverflowPercentage] = useState(0);
   const [hasApiKey, setHasApiKey] = useState(true);
+  const [generatedLogos, setGeneratedLogos] = useState<string[]>([]);
+  const [isGeneratingLogo, setIsGeneratingLogo] = useState(false);
   
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -864,6 +867,20 @@ export default function App() {
     }
   };
 
+  const handleGenerateLogo = async () => {
+    setIsGeneratingLogo(true);
+    try {
+      const logo = await generateLogo();
+      if (logo) {
+        setGeneratedLogos(prev => [logo, ...prev]);
+      }
+    } catch (error) {
+      console.error('Failed to generate logo:', error);
+    } finally {
+      setIsGeneratingLogo(false);
+    }
+  };
+
   const ConnectionLines = () => {
     const [coords, setCoords] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
 
@@ -936,6 +953,21 @@ export default function App() {
       <header className="bg-white border-b border-stone-200 sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-black rounded-2xl flex items-center justify-center text-white shadow-xl transform -rotate-2 hover:rotate-0 transition-all duration-500 group cursor-pointer">
+              <svg 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-6 h-6 group-hover:scale-110 transition-transform"
+              >
+                {/* Stylized P that is also an arrow */}
+                <path d="M7 21V3h7a5 5 0 0 1 0 10H7" />
+                <path d="M14 8l3-3m0 0h-3m3 0v3" className="text-white/80" />
+              </svg>
+            </div>
             <h1 className="font-bold text-xl leading-none">pushResume</h1>
           </div>
 
@@ -1083,6 +1115,12 @@ export default function App() {
                 className={`flex-1 py-3 text-sm font-semibold rounded-2xl transition-all ${activeTab === 'latex' ? 'bg-stone-50 text-black' : 'text-stone-400 hover:text-stone-600'}`}
               >
                 LaTeX
+              </button>
+              <button 
+                onClick={() => setActiveTab('branding')}
+                className={`flex-1 py-3 text-sm font-semibold rounded-2xl transition-all ${activeTab === 'branding' ? 'bg-stone-50 text-black' : 'text-stone-400 hover:text-stone-600'}`}
+              >
+                Branding
               </button>
             </div>
 
@@ -1662,6 +1700,99 @@ export default function App() {
                   </motion.div>
                 )}
 
+                {activeTab === 'branding' && (
+                  <motion.div 
+                    key="branding"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="space-y-8"
+                  >
+                    <div className="bg-white border border-stone-200 rounded-[2.5rem] p-10 shadow-sm">
+                      <div className="flex items-center justify-between mb-8">
+                        <div>
+                          <h2 className="text-2xl font-bold">Brand Identity</h2>
+                          <p className="text-stone-500 text-sm mt-1">Simple, elegant, and unique assets for pushresume.net</p>
+                        </div>
+                        <button 
+                          onClick={handleGenerateLogo}
+                          disabled={isGeneratingLogo}
+                          className="px-6 py-3 bg-black text-white rounded-full text-sm font-bold flex items-center gap-2 hover:bg-stone-800 transition-all disabled:opacity-50"
+                        >
+                          {isGeneratingLogo ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                          Generate New Variation
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Current Logo */}
+                        <div className="space-y-4">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Current Site Logo (SVG)</h3>
+                          <div className="aspect-square bg-stone-50 rounded-3xl border border-stone-100 flex items-center justify-center p-12 group relative">
+                            <div className="w-24 h-24 bg-black rounded-[2rem] flex items-center justify-center text-white shadow-2xl transform -rotate-3 group-hover:rotate-0 transition-all duration-500">
+                              <svg 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke="currentColor" 
+                                strokeWidth="2.5" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                className="w-12 h-12"
+                              >
+                                <path d="M7 21V3h7a5 5 0 0 1 0 10H7" />
+                                <path d="M14 8l3-3m0 0h-3m3 0v3" className="text-white/80" />
+                              </svg>
+                            </div>
+                            <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl flex items-center justify-center">
+                              <span className="bg-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-sm">Active Logo</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-stone-500 leading-relaxed">
+                            A minimalist "P" that doubles as an upward arrow, symbolizing career progression and the "push" towards success.
+                          </p>
+                        </div>
+
+                        {/* AI Generated Variations */}
+                        <div className="space-y-4">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">AI Generated Variations</h3>
+                          <div className="grid grid-cols-2 gap-4">
+                            {generatedLogos.length === 0 && !isGeneratingLogo && (
+                              <div className="col-span-2 aspect-[2/1] bg-stone-50 rounded-3xl border border-dashed border-stone-200 flex flex-col items-center justify-center text-stone-400 p-6 text-center">
+                                <Sparkles size={24} className="mb-2 opacity-30" />
+                                <p className="text-[10px] font-bold uppercase tracking-widest">Click generate to see AI concepts</p>
+                              </div>
+                            )}
+                            {isGeneratingLogo && (
+                              <div className="col-span-2 aspect-[2/1] bg-stone-50 rounded-3xl border border-stone-100 flex flex-col items-center justify-center">
+                                <RefreshCw size={24} className="animate-spin text-stone-300 mb-2" />
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Dreaming up designs...</p>
+                              </div>
+                            )}
+                            {generatedLogos.map((logo, i) => (
+                              <motion.div 
+                                key={i}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="aspect-square bg-white rounded-2xl border border-stone-100 overflow-hidden shadow-sm hover:shadow-md transition-all group relative"
+                              >
+                                <img src={logo} alt={`Logo Concept ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                  <a 
+                                    href={logo} 
+                                    download={`pushresume-logo-concept-${i}.png`}
+                                    className="p-2 bg-white rounded-full text-black hover:bg-black hover:text-white transition-all"
+                                  >
+                                    <Download size={14} />
+                                  </a>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
                 {activeTab === 'analysis' && (
                   <motion.div 
                     key="analysis"
