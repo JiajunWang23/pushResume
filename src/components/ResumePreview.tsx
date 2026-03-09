@@ -93,13 +93,7 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
           {data.experience.map((exp, i) => (
             <div key={i} className="mb-2">
               <div className="flex justify-between font-bold text-[11pt]">
-                {exp.link ? (
-                  <a href={exp.link.startsWith('http') ? exp.link : `https://${exp.link}`} target="_blank" rel="noopener noreferrer" className="underline decoration-1 underline-offset-2">
-                    {exp.role}
-                  </a>
-                ) : (
-                  <span>{exp.role}</span>
-                )}
+                <span>{exp.role}</span>
                 <span>{abbreviateDate(exp.date)}</span>
               </div>
               <div className="flex justify-between italic text-[10.5pt] mb-1">
@@ -156,13 +150,7 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
           {section.items.map((item, j) => (
             <div key={j} className="mb-2">
               <div className="flex justify-between font-bold text-[11pt]">
-                {item.link ? (
-                  <a href={item.link.startsWith('http') ? item.link : `https://${item.link}`} target="_blank" rel="noopener noreferrer" className="underline decoration-1 underline-offset-2">
-                    {item.title}
-                  </a>
-                ) : (
-                  <span>{item.title}</span>
-                )}
+                <span>{item.title}</span>
                 <span>{abbreviateDate(item.date)}</span>
               </div>
               {item.subtitle && (

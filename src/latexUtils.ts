@@ -56,7 +56,7 @@ export const generateLatex = (data: ResumeData): string => {
 
   const experienceStr = (data.experience || []).map(exp => `
     \\resumeSubheading
-      {${exp.link ? `\\href{${exp.link.startsWith('http') ? exp.link : `https://${exp.link}`}}{\\underline{${escapeLatex(exp.role)}}}` : escapeLatex(exp.role)}}{${escapeLatex(exp.date)}}
+      {${escapeLatex(exp.role)}}{${escapeLatex(exp.date)}}
       {${escapeLatex(exp.company)}}{}
       \\resumeItemListStart
       ${exp.bullets.filter(b => b).map(b => `\\resumeItem{${escapeLatex(b)}}`).join("\n        ")}
@@ -74,7 +74,7 @@ export const generateLatex = (data: ResumeData): string => {
   \\resumeSubHeadingListStart
     ${section.items.map(item => `
     \\resumeSubheading
-      {${item.link ? `\\href{${item.link.startsWith('http') ? item.link : `https://${item.link}`}}{\\underline{${escapeLatex(item.title)}}}` : escapeLatex(item.title)}}{${escapeLatex(item.date || "")}}
+      {${escapeLatex(item.title)}}{${escapeLatex(item.date || "")}}
       {${escapeLatex(item.subtitle || "")}}{}
       \\resumeItemListStart
         ${item.bullets.filter(b => b).map(b => `\\resumeItem{${escapeLatex(b)}}`).join("\n        ")}
