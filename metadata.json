@@ -1,0 +1,5 @@
+{
+  "name": "pushResume",
+  "description": "Professional LaTeX-style resume builder with ATS scoring and JD optimization.",
+  "requestFramePermissions": []
+}
