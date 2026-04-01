@@ -19,7 +19,9 @@ import {
   Undo2,
   Redo2,
   ArrowRight,
-  Type as TypeIcon
+  Type as TypeIcon,
+  Globe,
+  Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { INITIAL_RESUME, ResumeData, ensureResumeData, Suggestion } from './types';
@@ -55,6 +57,8 @@ export default function App() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [jdAnalysis, setJdAnalysis] = useState<any>(null);
   const [jd, setJd] = useState('');
+  const [jdUrl, setJdUrl] = useState('');
+  const [isFetchingJd, setIsFetchingJd] = useState(false);
   const [activeTab, setActiveTab] = useState<'import' | 'editor' | 'analysis' | 'jd' | 'latex'>('import');
   const [hoveredSuggestion, setHoveredSuggestion] = useState<{ id: string, category: string } | null>(null);
   const [isImprovingBullet, setIsImprovingBullet] = useState<{i: number, j: number} | null>(null);
@@ -63,8 +67,48 @@ export default function App() {
   const [isOverPageLimit, setIsOverPageLimit] = useState(false);
   const [overflowPercentage, setOverflowPercentage] = useState(0);
   const [hasApiKey, setHasApiKey] = useState(true);
+  const [isSharing, setIsSharing] = useState(false);
+  const [sharedLink, setSharedLink] = useState<string | null>(null);
+  const [isLoadingShared, setIsLoadingShared] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [isSharedView, setIsSharedView] = useState(false);
   
   const previewRef = useRef<HTMLDivElement>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  useEffect(() => {
+    const loadSharedResume = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const shareId = urlParams.get('share');
+      if (shareId) {
+        setIsLoadingShared(true);
+        setIsSharedView(true);
+        try {
+          const response = await fetch(`/api/resumes/${shareId}`);
+          if (response.ok) {
+            const result = await response.json();
+            if (result.data) {
+              const validated = ensureResumeData(result.data);
+              setResumeData(validated);
+              setActiveTab('editor');
+            }
+          } else {
+            console.error('Failed to fetch shared resume');
+          }
+        } catch (error) {
+          console.error('Error loading shared resume:', error);
+        } finally {
+          setIsLoadingShared(false);
+        }
+      }
+    };
+    loadSharedResume();
+  }, []);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -355,7 +399,7 @@ export default function App() {
         handleOpenKeyDialog();
       }
     } else {
-      alert(`${context} failed: ${errorMsg}`);
+      showToast(`${context} failed: ${errorMsg}`, 'error');
     }
   };
 
@@ -585,6 +629,64 @@ export default function App() {
       handleApiError(error, 'Optimization');
     } finally {
       setIsParsing(false);
+    }
+  };
+
+  const handleFetchJdFromUrl = async () => {
+    if (!jdUrl) return;
+    
+    setIsFetchingJd(true);
+    try {
+      const response = await fetch(`/api/fetch-jd?url=${encodeURIComponent(jdUrl)}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch job description from the provided URL');
+      }
+      const data = await response.json();
+      if (data.text) {
+        setJd(data.text);
+        setJdUrl('');
+      } else {
+        throw new Error('No job description text found at the provided URL');
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to fetch JD');
+    } finally {
+      setIsFetchingJd(false);
+    }
+  };
+
+  const handleShareLink = async () => {
+    setIsSharing(true);
+    try {
+      const response = await fetch('/api/resumes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data: resumeData }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate share link');
+      }
+      
+      const { id } = await response.json();
+      const baseUrl = window.location.origin + window.location.pathname;
+      const shareUrl = `${baseUrl}?share=${id}`;
+      setSharedLink(shareUrl);
+      setShowShareModal(true);
+      
+      // Try to copy to clipboard
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast('Link copied to clipboard!');
+      } catch (err) {
+        console.warn('Clipboard copy failed:', err);
+      }
+    } catch (error: any) {
+      showToast(error.message || 'Failed to share resume', 'error');
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -946,9 +1048,138 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans">
-      <ConnectionLines />
-      {/* Header */}
-      <header className="bg-white border-b border-stone-200 sticky top-0 z-50">
+      <AnimatePresence>
+        {isLoadingShared && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-white/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center gap-4"
+          >
+            <RefreshCw size={48} className="text-black animate-spin" />
+            <p className="text-lg font-medium text-stone-600">Loading shared resume...</p>
+          </motion.div>
+        )}
+
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={`fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-2xl z-[100] flex items-center gap-3 ${
+              toast.type === 'success' ? 'bg-black text-white' : 'bg-red-600 text-white'
+            }`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span className="text-sm font-medium">{toast.message}</span>
+          </motion.div>
+        )}
+
+        {showShareModal && sharedLink && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6"
+            onClick={() => setShowShareModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">Share Resume</h2>
+                <button onClick={() => setShowShareModal(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <p className="text-stone-500 mb-6">Anyone with this link can view your resume.</p>
+              <div className="flex gap-2 mb-6">
+                <a 
+                  href={sharedLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm font-mono hover:bg-stone-100 transition-colors truncate block"
+                  title="Click to open in new tab"
+                >
+                  {sharedLink}
+                </a>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(sharedLink);
+                    showToast('Copied!');
+                  }}
+                  className="bg-black text-white px-4 py-3 rounded-xl hover:bg-stone-800 transition-colors flex items-center gap-2"
+                  title="Copy to clipboard"
+                >
+                  Copy
+                </button>
+              </div>
+              <button 
+                onClick={() => setShowShareModal(false)}
+                className="w-full py-4 bg-stone-100 hover:bg-stone-200 rounded-2xl font-bold transition-colors"
+              >
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {isSharedView ? (
+        <div className="min-h-screen bg-stone-100 py-12 flex flex-col items-center">
+          <div className="mb-8 flex items-center gap-3">
+            <div className="w-10 h-10 bg-black rounded-2xl flex items-center justify-center text-white shadow-xl transform -rotate-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                <path d="M7 21V3h7a5 5 0 0 1 0 10H7" />
+                <path d="M14 8l3-3m0 0h-3m3 0v3" className="text-white/80" />
+              </svg>
+            </div>
+            <h1 className="font-bold text-xl leading-none">PushResume</h1>
+          </div>
+          
+          <div className="relative group">
+            <ResumePreview 
+              data={resumeData} 
+              fontFamily={fontFamily}
+              fontSize={fontSize}
+            />
+            
+            <div className="mt-8 flex justify-center gap-4 no-print">
+              <button 
+                onClick={() => window.print()}
+                className="px-6 py-3 bg-black text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-stone-800 transition-all shadow-xl shadow-black/10"
+              >
+                <Download size={18} />
+                Download PDF
+              </button>
+              <button 
+                onClick={() => window.location.href = window.location.origin}
+                className="px-6 py-3 bg-white text-black border border-stone-200 rounded-2xl font-bold flex items-center gap-2 hover:bg-stone-50 transition-all shadow-sm"
+              >
+                <Sparkles size={18} />
+                Create Your Own
+              </button>
+            </div>
+          </div>
+          
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              .no-print { display: none !important; }
+              body { background: white !important; padding: 0 !important; }
+              .min-h-screen { min-height: auto !important; padding: 0 !important; background: white !important; }
+              .py-12 { padding: 0 !important; }
+              .mb-8 { display: none !important; }
+            }
+          `}} />
+        </div>
+      ) : (
+        <>
+          <ConnectionLines />
+          {/* Header */}
+          <header className="bg-white border-b border-stone-200 sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-black rounded-2xl flex items-center justify-center text-white shadow-xl transform -rotate-2 hover:rotate-0 transition-all duration-500 group cursor-pointer">
@@ -1064,6 +1295,16 @@ export default function App() {
                 >
                   <Download size={16} />
                   Download PDF
+                </button>
+                <div className="w-px h-4 bg-white/20" />
+                <button 
+                  onClick={handleShareLink}
+                  disabled={isSharing}
+                  className="flex items-center gap-2 px-6 py-2 hover:bg-white/10 rounded-full transition-colors text-sm font-medium"
+                  title="Generate shareable link"
+                >
+                  {isSharing ? <RefreshCw size={16} className="animate-spin" /> : <Share2 size={16} />}
+                  {isSharing ? 'Generating...' : 'Share Link'}
                 </button>
                 <div className="w-px h-4 bg-white/20" />
                 <button 
@@ -1789,7 +2030,7 @@ export default function App() {
                           <ul className="space-y-3">
                             {analysis.suggestions.map((s: Suggestion, i: number) => (
                               <li 
-                                key={s.id || i} 
+                                key={`ats-suggestion-${s.id}-${i}`} 
                                 id={`suggestion-${s.id}`}
                                 onMouseEnter={() => setHoveredSuggestion({ id: s.id, category: s.category || 'experience' })}
                                 onMouseLeave={() => setHoveredSuggestion(null)}
@@ -1937,14 +2178,49 @@ export default function App() {
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-6"
                   >
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Target Job Description</label>
-                      <textarea 
-                        value={jd}
-                        onChange={(e) => setJd(e.target.value)}
-                        placeholder="Paste the job description here..."
-                        className="w-full h-64 p-4 bg-stone-50 border border-stone-200 rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all text-sm leading-relaxed"
-                      />
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Import from URL</label>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <Globe size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
+                            <input 
+                              value={jdUrl}
+                              onChange={(e) => setJdUrl(e.target.value)}
+                              placeholder="Paste job description link (LinkedIn, Indeed, etc.)"
+                              className="w-full pl-10 pr-4 py-3 bg-stone-50 border border-stone-200 rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all text-sm"
+                            />
+                          </div>
+                          <button 
+                            onClick={handleFetchJdFromUrl}
+                            disabled={!jdUrl || isFetchingJd}
+                            className="px-6 py-3 bg-stone-100 hover:bg-black hover:text-white rounded-2xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {isFetchingJd ? <RefreshCw size={14} className="animate-spin" /> : <LinkIcon size={14} />}
+                            Fetch
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-stone-400 italic ml-1">We'll try to extract the job description text for you.</p>
+                      </div>
+
+                      <div className="relative py-4">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-stone-100"></div>
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-white px-2 text-stone-400 font-bold tracking-widest">Or</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Target Job Description</label>
+                        <textarea 
+                          value={jd}
+                          onChange={(e) => setJd(e.target.value)}
+                          placeholder="Paste the job description here..."
+                          className="w-full h-64 p-4 bg-stone-50 border border-stone-200 rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all text-sm leading-relaxed"
+                        />
+                      </div>
                     </div>
                     
                     <button 
@@ -1988,7 +2264,7 @@ export default function App() {
                           <ul className="space-y-4">
                             {jdAnalysis.suggestions.map((s: Suggestion, i: number) => (
                               <li 
-                                key={s.id || i} 
+                                key={`jd-suggestion-${s.id}-${i}`} 
                                 id={`suggestion-${s.id}`}
                                 onMouseEnter={() => setHoveredSuggestion({ id: s.id, category: s.category || 'experience' })}
                                 onMouseLeave={() => setHoveredSuggestion(null)}
@@ -2207,8 +2483,10 @@ export default function App() {
           </div>
         </div>
       </main>
+    </>
+  )}
 
-      {/* Parsing Overlay */}
+  {/* Parsing Overlay */}
       <AnimatePresence>
         {isParsing && (
           <motion.div 

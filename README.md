@@ -1,68 +1,20 @@
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-Done in minutes.
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-## 🎯 Who is this for?
+View your app in AI Studio: https://ai.studio/apps/64579e7a-a1e1-4a06-90f1-2fcda0da0c9e
 
-- CS / SWE students  
-- New grads  
-- Job seekers applying at scale  
-- Anyone tired of rewriting resumes  
+## Run Locally
 
----
+**Prerequisites:**  Node.js
 
-## 💡 Example Use Case
 
-**You:** applying to 50 jobs → rewriting resume 50 times  
-
-**PushResume:**  
-1 base resume → auto-tailored versions for each job  
-
----
-
-## 🚀 Vision
-
-PushResume is not just a resume builder.
-
-It’s your:
-- AI job search assistant  
-- resume optimizer  
-- interview accelerator  
-
----
-
-## 📈 Goal
-
-👉 More interviews. Faster offers. Less effort.
-
----
-
-## 🛠 Tech Stack
-
-- Frontend: Next.js / React  
-- Backend: Python / Node.js  
-- AI: LLM-based rewriting engine  
-- PDF: LaTeX (Overleaf integration)
-
----
-
-## 🤝 Contributing
-
-PRs welcome. Ideas welcome. Feedback welcome.
-
----
-
-## 📬 Contact
-
-Built by **Eloise Wang**  
-- LinkedIn  
-- GitHub  
-- Email  
-
----
-
-## ⭐ If you like it
-
-Star the repo.  
-Or better — **use it and get interviews.**
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

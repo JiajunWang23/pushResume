@@ -10,18 +10,28 @@ const getAI = () => {
 export const parseResume = async (text: string): Promise<ResumeData> => {
   const ai = getAI();
   // Truncate text to reasonable length to speed up processing
-  const truncatedText = text.slice(0, 15000);
+  const truncatedText = text.slice(0, 30000);
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `You are an expert resume parser. Extract information from the following text into structured JSON.
+    contents: `You are a world-class resume parsing engine. Your task is to extract all relevant information from the provided resume text into a highly structured JSON format.
+    
+    CRITICAL INSTRUCTIONS:
+    1. EXTRACT EVERYTHING: Do not summarize. Extract every job, every project, every education entry, and every skill.
+    2. SECTION IDENTIFICATION: Look for Experience, Education, Projects, and Skills. If headers are missing or non-standard, use the content structure to identify these sections.
+    3. MULTI-COLUMN HANDLING: The text may be interleaved due to multi-column layouts (e.g., sidebar text mixed with main content). Use your reasoning to unscramble and correctly assign text to its proper section.
+    4. BULLETS: Extract all bullet points for experience and projects. Each bullet should be a separate string in the array.
+    5. WORDING: Preserve the original wording as much as possible.
+    6. LINKS: Extract any URLs associated with companies, projects, or schools.
+    7. MISSING DATA: If a field is not found, use an empty string or empty array.
+    8. EXCLUSIONS: Do not extract a professional summary, objective, or physical addresses/locations.
+    9. SKILLS PURITY: The Technical Skills section (Languages, Frameworks, Tools, Libraries) MUST ONLY contain comma-separated keywords or short technologies. NEVER include full sentences, descriptions, or bullet points from the experience section here. If you see sentences mixed with skills, move the sentences to the appropriate Experience entry.
     
     Resume Text:
     ${truncatedText}`,
     config: {
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      systemInstruction: "Extract resume data accurately. Preserve original wording. If missing, use empty string/array. Ensure 'bullets' are clean strings. DO NOT extract a summary, professional profile, or locations (city/state).",
+      systemInstruction: "Extract resume data with 100% accuracy. Ensure no sections are missed. Focus on Experience, Education, Projects, and Skills. Strictly separate skills from experience bullets.",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -37,17 +47,18 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
               properties: {
                 school: { type: Type.STRING },
                 degree: { type: Type.STRING },
-                date: { type: Type.STRING }
+                date: { type: Type.STRING },
+                link: { type: Type.STRING, description: "School website or relevant URL if available" }
               }
             }
           },
           skills: {
             type: Type.OBJECT,
             properties: {
-              languages: { type: Type.STRING },
-              frameworks: { type: Type.STRING },
-              tools: { type: Type.STRING },
-              libraries: { type: Type.STRING }
+              languages: { type: Type.STRING, description: "Comma-separated list of programming languages only." },
+              frameworks: { type: Type.STRING, description: "Comma-separated list of frameworks/libraries only." },
+              tools: { type: Type.STRING, description: "Comma-separated list of developer tools/software only." },
+              libraries: { type: Type.STRING, description: "Comma-separated list of other technical libraries only." }
             }
           },
           experience: {
@@ -58,6 +69,7 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
                 role: { type: Type.STRING },
                 date: { type: Type.STRING },
                 company: { type: Type.STRING },
+                link: { type: Type.STRING, description: "Relevant URL for the company or role if available" },
                 bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
               }
             }
@@ -72,6 +84,28 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
                 date: { type: Type.STRING },
                 link: { type: Type.STRING, description: "Project URL or GitHub repository link if available" },
                 bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
+              }
+            }
+          },
+          customSections: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                items: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      title: { type: Type.STRING },
+                      subtitle: { type: Type.STRING },
+                      date: { type: Type.STRING },
+                      link: { type: Type.STRING, description: "Relevant URL for this item if available" },
+                      bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    }
+                  }
+                }
               }
             }
           }
@@ -155,7 +189,7 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
        Resume: ${JSON.stringify(resume)}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.1-pro-preview",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -224,7 +258,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
        Bullet: ${bullet}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.1-pro-preview",
     contents: prompt,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
@@ -237,7 +271,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
 export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.1-pro-preview",
     contents: `Analyze this resume against the following Job Description (JD) and provide specific, actionable optimization suggestions to improve the match rate.
     
     CRITICAL STANDARDS:

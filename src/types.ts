@@ -37,6 +37,7 @@ export interface ResumeData {
     degree: string;
     date: string;
     gpa?: string;
+    link?: string;
   }>;
   skills: {
     languages: string;
@@ -49,6 +50,7 @@ export interface ResumeData {
     date: string;
     company: string;
     bullets: string[];
+    link?: string;
   }>;
   projects: Array<{
     name: string;
@@ -70,6 +72,7 @@ export interface ResumeData {
       subtitle?: string;
       date?: string;
       bullets: string[];
+      link?: string;
     }>;
   }>;
   modifications?: Modification[];
@@ -86,7 +89,8 @@ export const ensureResumeData = (data: any): ResumeData => {
       school: e.school || "",
       degree: e.degree || "",
       date: e.date || "",
-      gpa: e.gpa || ""
+      gpa: e.gpa || "",
+      link: e.link || ""
     })) : [],
     skills: {
       languages: data?.skills?.languages || "",
@@ -98,7 +102,8 @@ export const ensureResumeData = (data: any): ResumeData => {
       role: e.role || "",
       date: e.date || "",
       company: e.company || "",
-      bullets: Array.isArray(e.bullets) ? e.bullets : []
+      bullets: Array.isArray(e.bullets) ? e.bullets : [],
+      link: e.link || ""
     })) : [],
     projects: Array.isArray(data?.projects) ? data.projects.map((p: any) => ({
       name: p.name || "",
@@ -119,7 +124,8 @@ export const ensureResumeData = (data: any): ResumeData => {
         title: i.title || "",
         subtitle: i.subtitle || "",
         date: i.date || "",
-        bullets: Array.isArray(i.bullets) ? i.bullets : []
+        bullets: Array.isArray(i.bullets) ? i.bullets : [],
+        link: i.link || ""
       })) : []
     })) : [],
     modifications: Array.isArray(data?.modifications) ? data.modifications : [],
@@ -187,15 +193,14 @@ export const INITIAL_RESUME: ResumeData = {
   ],
   projects: [
     {
-      name: "Gitlytics",
-      tech: "Python, Flask, React, PostgreSQL, Docker",
-      date: "June 2020 -- Present",
-      link: "https://github.com/jake/gitlytics",
+      name: "Event Streaming Analytics Service",
+      tech: "Python, Flask, React, WebSocket, Redis, PostgreSQL, Docker, REST API",
+      date: "Jan. 2023 -- Present",
       bullets: [
-        "Architected a full-stack analytics platform with a Flask REST API backend and React frontend, supporting real-time GitHub repository insights for 50+ users",
-        "Integrated GitHub OAuth 2.0 to securely fetch and process repository data, enabling per-user dashboards with granular contribution breakdowns",
-        "Built interactive collaboration visualizations (graphs, heatmaps) that reduced code review preparation time by an estimated 40%",
-        "Leveraged Celery and Redis to offload asynchronous data processing tasks, improving API response times by 60%"
+        "Architected a real-time event streaming platform using WebSockets and Redis Pub/Sub, achieving sub-second latency for live data visualization and analytics.",
+        "Developed a scalable backend with Flask and PostgreSQL, implementing optimized indexing and partitioning strategies to handle high-throughput event logs.",
+        "Built an interactive React dashboard with real-time updates and complex data visualizations, enabling users to monitor system health and event patterns dynamically.",
+        "Containerized the microservices architecture using Docker and Docker Compose, ensuring consistent deployment environments and 99.9% system reliability."
       ]
     }
   ],
