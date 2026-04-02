@@ -574,7 +574,12 @@ export default function App() {
       if (result.suggestions) {
         const seenIds = new Set();
         result.suggestions = result.suggestions.map((s: any, i: number) => {
-          let newId = s.id || `suggestion-${i}`;
+          // Ensure ID starts with a letter and is alphanumeric
+          let baseId = (s.id || `suggestion-${i}`).replace(/[^a-zA-Z0-9]/g, '');
+          if (!/^[a-zA-Z]/.test(baseId)) {
+            baseId = `s_${baseId}`;
+          }
+          let newId = baseId;
           if (seenIds.has(newId)) {
             newId = `${newId}-${i}`;
           }
@@ -612,7 +617,12 @@ export default function App() {
       if (result.suggestions) {
         const seenIds = new Set();
         result.suggestions = result.suggestions.map((s: any, i: number) => {
-          let newId = s.id || `suggestion-${i}`;
+          // Ensure ID starts with a letter and is alphanumeric
+          let baseId = (s.id || `suggestion-${i}`).replace(/[^a-zA-Z0-9]/g, '');
+          if (!/^[a-zA-Z]/.test(baseId)) {
+            baseId = `o_${baseId}`;
+          }
+          let newId = baseId;
           if (seenIds.has(newId)) {
             newId = `${newId}-${i}`;
           }
