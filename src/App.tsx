@@ -491,6 +491,11 @@ export default function App() {
               text = simpleText;
             }
           }
+          
+          console.log("Extracted text length:", text.length);
+          if (text.length < 50) {
+            throw new Error("Could not extract enough text from the PDF. Please try a different file or copy-paste the text.");
+          }
         } catch (pdfError: any) {
           console.error('PDF.js error:', pdfError);
           throw new Error('Failed to extract text from PDF. Please try a different file.');
@@ -666,11 +671,13 @@ export default function App() {
         body: JSON.stringify({ data: resumeData }),
       });
       
+      const result = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Failed to generate share link');
+        throw new Error(result.error || 'Failed to generate share link');
       }
       
-      const { id } = await response.json();
+      const id = result.id;
       const baseUrl = window.location.origin + window.location.pathname;
       const shareUrl = `${baseUrl}?share=${id}`;
       setSharedLink(shareUrl);
@@ -1565,7 +1572,7 @@ export default function App() {
                         </div>
                       </div>
                       {resumeData.education.map((edu, i) => (
-                        <div key={i} className="p-4 bg-stone-50 border border-stone-200 rounded-2xl mb-4 relative group">
+                        <div key={`editor-edu-${i}`} className="p-4 bg-stone-50 border border-stone-200 rounded-2xl mb-4 relative group">
                           <button 
                             onClick={() => setResumeData({
                               ...resumeData, 
@@ -1640,7 +1647,7 @@ export default function App() {
                         </button>
                       </div>
                       {resumeData.experience.map((exp, i) => (
-                        <div key={i} className="p-4 bg-stone-50 border border-stone-200 rounded-2xl mb-4 relative group">
+                        <div key={`editor-exp-${i}`} className="p-4 bg-stone-50 border border-stone-200 rounded-2xl mb-4 relative group">
                           <button 
                             onClick={() => setResumeData({
                               ...resumeData, 
@@ -1684,7 +1691,7 @@ export default function App() {
                           </div>
                           <div className="space-y-2">
                             {exp.bullets.map((bullet, j) => (
-                              <div key={j} className="relative group/bullet">
+                              <div key={`editor-exp-bullet-${i}-${j}`} className="relative group/bullet">
                                 <textarea 
                                   value={bullet}
                                   onChange={(e) => {
@@ -1739,7 +1746,7 @@ export default function App() {
                         </button>
                       </div>
                       {resumeData.projects.map((proj, i) => (
-                        <div key={i} className="p-4 bg-stone-50 border border-stone-200 rounded-2xl mb-4 relative group">
+                        <div key={`editor-proj-${i}`} className="p-4 bg-stone-50 border border-stone-200 rounded-2xl mb-4 relative group">
                           <button 
                             onClick={() => setResumeData({
                               ...resumeData, 
@@ -1793,7 +1800,7 @@ export default function App() {
                           </div>
                           <div className="space-y-2">
                             {proj.bullets.map((bullet, j) => (
-                              <div key={j} className="relative group/bullet">
+                              <div key={`editor-proj-bullet-${i}-${j}`} className="relative group/bullet">
                                 <textarea 
                                   value={bullet}
                                   onChange={(e) => {

@@ -36,17 +36,25 @@ async function startServer() {
     try {
       const { data } = req.body;
       if (!data) {
+        console.error("Share request failed: No resume data provided");
         return res.status(400).json({ error: "Resume data is required" });
       }
 
       const id = uuidv4().substring(0, 8); // Short ID for sharing
+      console.log(`Generating share link for ID: ${id}`);
+      
       const stmt = db.prepare("INSERT INTO resumes (id, data) VALUES (?, ?)");
-      stmt.run(id, JSON.stringify(data));
+      const result = stmt.run(id, JSON.stringify(data));
+      
+      if (result.changes === 0) {
+        throw new Error("No rows were inserted");
+      }
 
+      console.log(`Successfully saved resume with ID: ${id}`);
       res.json({ id });
     } catch (error: any) {
-      console.error("Error saving resume:", error.message);
-      res.status(500).json({ error: "Failed to save resume" });
+      console.error("Error saving resume to database:", error.message);
+      res.status(500).json({ error: `Failed to save resume: ${error.message}` });
     }
   });
 

@@ -17,21 +17,22 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
     contents: `You are a world-class resume parsing engine. Your task is to extract all relevant information from the provided resume text into a highly structured JSON format.
     
     CRITICAL INSTRUCTIONS:
-    1. EXTRACT EVERYTHING: Do not summarize. Extract every job, every project, every education entry, and every skill.
-    2. SECTION IDENTIFICATION: Look for Experience, Education, Projects, and Skills. If headers are missing or non-standard, use the content structure to identify these sections.
-    3. MULTI-COLUMN HANDLING: The text may be interleaved due to multi-column layouts (e.g., sidebar text mixed with main content). Use your reasoning to unscramble and correctly assign text to its proper section.
+    1. EXTRACT EVERYTHING: Do not summarize. Extract every job, every project, every education entry, and every skill. If you see a block of text that looks like a job but isn't under an "Experience" header, extract it anyway.
+    2. SECTION IDENTIFICATION: Look for Experience, Education, Projects, and Skills. If headers are missing or non-standard (e.g., "Professional History", "Academic Background", "Technical Proficiencies"), use the content structure to identify these sections.
+    3. MULTI-COLUMN HANDLING: The text may be interleaved due to multi-column layouts. Use your reasoning to unscramble and correctly assign text to its proper section.
     4. BULLETS: Extract all bullet points for experience and projects. Each bullet should be a separate string in the array.
     5. WORDING: Preserve the original wording as much as possible.
     6. LINKS: Extract any URLs associated with companies, projects, or schools.
     7. MISSING DATA: If a field is not found, use an empty string or empty array.
     8. EXCLUSIONS: Do not extract a professional summary, objective, or physical addresses/locations.
-    9. SKILLS PURITY: The Technical Skills section (Languages, Frameworks, Tools, Libraries) MUST ONLY contain comma-separated keywords or short technologies. NEVER include full sentences, descriptions, or bullet points from the experience section here. If you see sentences mixed with skills, move the sentences to the appropriate Experience entry.
+    9. SKILLS PURITY: The Technical Skills section MUST ONLY contain comma-separated keywords or short technologies. NEVER include full sentences or job descriptions here.
     
     Resume Text:
     ${truncatedText}`,
     config: {
+      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
       responseMimeType: "application/json",
-      systemInstruction: "Extract resume data with 100% accuracy. Ensure no sections are missed. Focus on Experience, Education, Projects, and Skills. Strictly separate skills from experience bullets.",
+      systemInstruction: "Extract resume data with 100% accuracy. Ensure no sections are missed. If text looks like a job or project, extract it regardless of headers. Strictly separate skills from experience bullets.",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -114,7 +115,25 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  try {
+    const text = response.text || "{}";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : text;
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("Failed to parse AI response in parseResume:", e);
+    return {
+      name: '',
+      phone: '',
+      email: '',
+      linkedin: '',
+      github: '',
+      education: [],
+      skills: { languages: '', frameworks: '', tools: '', libraries: '' },
+      experience: [],
+      projects: []
+    };
+  }
 };
 
 export const analyzeResume = async (resume: ResumeData, jd?: string) => {
@@ -221,7 +240,15 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  try {
+    const text = response.text || "{}";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : text;
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("Failed to parse AI response in analyzeResume:", e);
+    return {};
+  }
 };
 
 export const improveBullet = async (bullet: string, jd?: string): Promise<string> => {
@@ -338,5 +365,13 @@ export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  try {
+    const text = response.text || "{}";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : text;
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("Failed to parse AI response in analyzeJD:", e);
+    return {};
+  }
 };
