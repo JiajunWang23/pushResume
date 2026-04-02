@@ -33,27 +33,39 @@ async function startServer() {
 
   // Share resume
   app.post("/api/resumes", (req, res) => {
-    try {
-      const { data } = req.body;
-      if (!data) {
-        console.error("Share request failed: No resume data provided");
-        return res.status(400).json({ error: "Resume data is required" });
-      }
+    const { data } = req.body;
+    if (!data) {
+      console.error("Share request failed: No resume data provided");
+      return res.status(400).json({ error: "Resume data is required" });
+    }
 
-      const id = uuidv4().substring(0, 8); // Short ID for sharing
+    try {
+      // Use a longer ID to reduce collision risk (12 chars instead of 8)
+      const id = uuidv4().replace(/-/g, "").substring(0, 12);
       console.log(`Generating share link for ID: ${id}`);
       
       const stmt = db.prepare("INSERT INTO resumes (id, data) VALUES (?, ?)");
       const result = stmt.run(id, JSON.stringify(data));
       
       if (result.changes === 0) {
-        throw new Error("No rows were inserted");
+        throw new Error("Database insertion failed: No rows were changed");
       }
 
       console.log(`Successfully saved resume with ID: ${id}`);
       res.json({ id });
     } catch (error: any) {
       console.error("Error saving resume to database:", error.message);
+      if (error.message.includes("UNIQUE constraint failed")) {
+        // Retry once with a different ID if collision occurs
+        try {
+          const retryId = uuidv4().replace(/-/g, "").substring(0, 12);
+          const stmt = db.prepare("INSERT INTO resumes (id, data) VALUES (?, ?)");
+          stmt.run(retryId, JSON.stringify(data));
+          return res.json({ id: retryId });
+        } catch (retryError: any) {
+          return res.status(500).json({ error: `Failed to save resume after retry: ${retryError.message}` });
+        }
+      }
       res.status(500).json({ error: `Failed to save resume: ${error.message}` });
     }
   });

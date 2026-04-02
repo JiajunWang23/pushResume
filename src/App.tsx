@@ -446,54 +446,23 @@ export default function App() {
           
           setParsingStep(`Processing ${pdf.numPages} pages...`);
           setParsingProgress(20);
-          // Parallelize page processing for speed
+          
           const pagePromises = Array.from({ length: pdf.numPages }, (_, i) => i + 1).map(async (pageNum) => {
             const page = await pdf.getPage(pageNum);
             const content = await page.getTextContent();
-            
-            // Sort items by vertical position (top to bottom) and then horizontal position (left to right)
-            const items = content.items as any[];
-            items.sort((a, b) => {
-              if (Math.abs(a.transform[5] - b.transform[5]) < 5) {
-                return a.transform[4] - b.transform[4];
-              }
-              return b.transform[5] - a.transform[5];
-            });
-
-            let lastY = -1;
-            let pageText = '';
-            for (const item of items) {
-              if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-                pageText += '\n';
-              }
-              pageText += item.str + ' ';
-              lastY = item.transform[5];
-            }
-            return pageText;
+            return content.items
+              .map((item: any) => typeof item.str === 'string' ? item.str : '')
+              .filter(str => str.trim().length > 0)
+              .join(' ');
           });
 
           const pageTexts = await Promise.all(pagePromises);
           text = pageTexts.join('\n\n');
           setParsingProgress(40);
-
-          if (text.trim().length < 100) {
-            setParsingStep('Refining text extraction...');
-            setParsingProgress(45);
-            const simplePagePromises = Array.from({ length: pdf.numPages }, (_, i) => i + 1).map(async (pageNum) => {
-              const page = await pdf.getPage(pageNum);
-              const content = await page.getTextContent();
-              return content.items.map((item: any) => item.str).join(' ');
-            });
-            const simplePageTexts = await Promise.all(simplePagePromises);
-            const simpleText = simplePageTexts.join('\n');
-            
-            if (simpleText.trim().length > text.trim().length) {
-              text = simpleText;
-            }
-          }
           
           console.log("Extracted text length:", text.length);
-          if (text.length < 50) {
+          
+          if (text.trim().length < 50) {
             throw new Error("Could not extract enough text from the PDF. Please try a different file or copy-paste the text.");
           }
         } catch (pdfError: any) {
@@ -528,17 +497,27 @@ export default function App() {
         });
       }, 500);
 
+      console.log("Sending text to AI for parsing...");
       const parsed = await parseResume(text);
       clearInterval(progressInterval);
       
+      console.log("AI parsing complete. Validating data...");
       setParsingStep('Finalizing data...');
       setParsingProgress(95);
       const validated = ensureResumeData(parsed);
       
-      if (!validated.name && validated.experience.length === 0 && validated.education.length === 0) {
-        throw new Error('AI failed to extract meaningful data. Please ensure the file is a readable resume.');
+      console.log("Parsed Experience count:", validated.experience.length);
+      console.log("Parsed Education count:", validated.education.length);
+      console.log("Parsed Skills:", validated.skills);
+
+      // If only name is parsed or data is very sparse, it might be a parsing failure
+      const hasContent = validated.experience.length > 0 || validated.education.length > 0 || validated.projects.length > 0 || (validated.skills.languages || validated.skills.frameworks);
+      
+      if (!hasContent) {
+        throw new Error('AI failed to extract meaningful sections (Experience, Education, or Skills). This can happen with complex PDF layouts. Please try copy-pasting your resume text instead.');
       }
 
+      console.log("Setting resume data with validated object:", validated);
       setResumeData(validated);
       setParsingProgress(100);
       setTimeout(() => {
@@ -593,6 +572,16 @@ export default function App() {
       
       // Filter out timeline/location suggestions
       if (result.suggestions) {
+        const seenIds = new Set();
+        result.suggestions = result.suggestions.map((s: any, i: number) => {
+          let newId = s.id || `suggestion-${i}`;
+          if (seenIds.has(newId)) {
+            newId = `${newId}-${i}`;
+          }
+          seenIds.add(newId);
+          return { ...s, id: newId };
+        });
+        
         result.suggestions = result.suggestions.filter((s: any) => {
           const text = (s.text || '').toLowerCase();
           const isTimeline = text.includes('date') || text.includes('timeline') || text.includes('year') || text.includes('month');
@@ -621,6 +610,16 @@ export default function App() {
       
       // Filter out timeline/location suggestions
       if (result.suggestions) {
+        const seenIds = new Set();
+        result.suggestions = result.suggestions.map((s: any, i: number) => {
+          let newId = s.id || `suggestion-${i}`;
+          if (seenIds.has(newId)) {
+            newId = `${newId}-${i}`;
+          }
+          seenIds.add(newId);
+          return { ...s, id: newId };
+        });
+
         result.suggestions = result.suggestions.filter((s: any) => {
           const text = (s.text || '').toLowerCase();
           const isTimeline = text.includes('date') || text.includes('timeline') || text.includes('year') || text.includes('month');
@@ -1055,9 +1054,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans">
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {isLoadingShared && (
           <motion.div 
+            key="loading-shared"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1070,6 +1070,7 @@ export default function App() {
 
         {toast && (
           <motion.div
+            key="toast-notification"
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
@@ -1084,6 +1085,7 @@ export default function App() {
 
         {showShareModal && sharedLink && (
           <motion.div
+            key="share-modal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1091,6 +1093,7 @@ export default function App() {
             onClick={() => setShowShareModal(false)}
           >
             <motion.div
+              key="share-modal-content"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
@@ -1851,7 +1854,7 @@ export default function App() {
                         </button>
                       </div>
                       {(resumeData.customSections || []).map((section, i) => (
-                        <div key={i} className="p-6 bg-stone-50 border border-stone-200 rounded-3xl mb-6 relative group">
+                        <div key={`editor-custom-section-${i}`} className="p-6 bg-stone-50 border border-stone-200 rounded-3xl mb-6 relative group">
                           <button 
                             onClick={() => {
                               const newSections = [...(resumeData.customSections || [])];
@@ -1879,7 +1882,7 @@ export default function App() {
 
                           <div className="space-y-4">
                             {section.items.map((item, j) => (
-                              <div key={j} className="p-4 bg-white border border-stone-100 rounded-2xl relative group/item">
+                              <div key={`editor-custom-item-${i}-${j}`} className="p-4 bg-white border border-stone-100 rounded-2xl relative group/item">
                                 <button 
                                   onClick={() => {
                                     const newSections = [...(resumeData.customSections || [])];
@@ -1926,7 +1929,7 @@ export default function App() {
 
                                 <div className="space-y-2">
                                   {item.bullets.map((bullet, k) => (
-                                    <div key={k} className="relative group/bullet">
+                                    <div key={`editor-custom-bullet-${i}-${j}-${k}`} className="relative group/bullet">
                                       <textarea 
                                         value={bullet}
                                         onChange={(e) => {
@@ -2165,7 +2168,7 @@ export default function App() {
                             </h4>
                             <div className="flex flex-wrap gap-2">
                               {analysis.missingKeywords.map((k: string, i: number) => (
-                                <span key={i} className="px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium">
+                                <span key={`missing-keyword-${i}`} className="px-3 py-1 bg-stone-100 text-stone-600 rounded-full text-xs font-medium">
                                   {k}
                                 </span>
                               ))}

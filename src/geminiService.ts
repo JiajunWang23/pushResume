@@ -17,22 +17,23 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
     contents: `You are a world-class resume parsing engine. Your task is to extract all relevant information from the provided resume text into a highly structured JSON format.
     
     CRITICAL INSTRUCTIONS:
-    1. EXTRACT EVERYTHING: Do not summarize. Extract every job, every project, every education entry, and every skill. If you see a block of text that looks like a job but isn't under an "Experience" header, extract it anyway.
+    1. EXTRACT EVERYTHING: Do not summarize. Extract every job, every project, every education entry, and every skill. 
     2. SECTION IDENTIFICATION: Look for Experience, Education, Projects, and Skills. If headers are missing or non-standard (e.g., "Professional History", "Academic Background", "Technical Proficiencies"), use the content structure to identify these sections.
-    3. MULTI-COLUMN HANDLING: The text may be interleaved due to multi-column layouts. Use your reasoning to unscramble and correctly assign text to its proper section.
+    3. MULTI-COLUMN HANDLING: The text may be interleaved (e.g., "Job 1 Title School Name Job 1 Date School Date"). Use your advanced reasoning to unscramble this text. If you see dates or roles mixed with school names, separate them into their respective sections (Experience vs. Education).
     4. BULLETS: Extract all bullet points for experience and projects. Each bullet should be a separate string in the array.
     5. WORDING: Preserve the original wording as much as possible.
     6. LINKS: Extract any URLs associated with companies, projects, or schools.
     7. MISSING DATA: If a field is not found, use an empty string or empty array.
     8. EXCLUSIONS: Do not extract a professional summary, objective, or physical addresses/locations.
-    9. SKILLS PURITY: The Technical Skills section MUST ONLY contain comma-separated keywords or short technologies. NEVER include full sentences or job descriptions here.
+    9. SKILLS PURITY: The Technical Skills section MUST ONLY contain comma-separated keywords or short technologies. NEVER include full sentences, job descriptions, or project details here. If it's a sentence, it belongs in Experience or Projects.
+    10. EXPERIENCE VS. SKILLS: A common error is putting job responsibilities into the skills section. STOP. Job responsibilities MUST go into the "experience" section as bullets. Only tools and technologies go into "skills".
+    11. FALLBACK: If a section doesn't clearly fit into Experience, Education, or Projects, put it into "customSections".
     
     Resume Text:
     ${truncatedText}`,
     config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
       responseMimeType: "application/json",
-      systemInstruction: "Extract resume data with 100% accuracy. Ensure no sections are missed. If text looks like a job or project, extract it regardless of headers. Strictly separate skills from experience bullets.",
+      systemInstruction: "You are a high-precision resume parser. Your goal is to perfectly reconstruct the resume structure from potentially scrambled text. You must distinguish between skills (keywords) and experience (sentences/bullets). Never put job descriptions in the skills section. If you see a list of items with dates, it's likely Experience or Education.",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -49,6 +50,7 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
                 school: { type: Type.STRING },
                 degree: { type: Type.STRING },
                 date: { type: Type.STRING },
+                gpa: { type: Type.STRING },
                 link: { type: Type.STRING, description: "School website or relevant URL if available" }
               }
             }
@@ -208,11 +210,10 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
        Resume: ${JSON.stringify(resume)}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -285,11 +286,8 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
        Bullet: ${bullet}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: prompt,
-    config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-    }
   });
 
   return response.text?.trim() || bullet;
@@ -298,7 +296,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
 export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-3-flash-preview",
     contents: `Analyze this resume against the following Job Description (JD) and provide specific, actionable optimization suggestions to improve the match rate.
     
     CRITICAL STANDARDS:
@@ -338,7 +336,6 @@ export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
     JD: ${jd}`,
     config: {
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
