@@ -56,15 +56,9 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
             {data.sectionTitles?.education || 'Education'}
           </h2>
           {data.education.map((edu, i) => (
-            <div key={`preview-edu-${i}`} className="mb-2">
+            <div key={i} className="mb-2">
               <div className="flex justify-between font-bold text-[11pt]">
-                {edu.link ? (
-                  <a href={edu.link.startsWith('http') ? edu.link : `https://${edu.link}`} target="_blank" rel="noopener noreferrer" className="underline decoration-1 underline-offset-2">
-                    {edu.school}
-                  </a>
-                ) : (
-                  <span>{edu.school}</span>
-                )}
+                <span>{edu.school}</span>
               </div>
               <div className="flex justify-between italic text-[10.5pt]">
                 <span>{edu.degree}{edu.gpa ? `; GPA: ${edu.gpa}` : ''}</span>
@@ -97,15 +91,9 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
             {data.sectionTitles?.experience || 'Experience'}
           </h2>
           {data.experience.map((exp, i) => (
-            <div key={`preview-exp-${i}`} className="mb-2">
+            <div key={i} className="mb-2">
               <div className="flex justify-between font-bold text-[11pt]">
-                {exp.link ? (
-                  <a href={exp.link.startsWith('http') ? exp.link : `https://${exp.link}`} target="_blank" rel="noopener noreferrer" className="underline decoration-1 underline-offset-2">
-                    {exp.role}
-                  </a>
-                ) : (
-                  <span>{exp.role}</span>
-                )}
+                <span>{exp.role}</span>
                 <span>{abbreviateDate(exp.date)}</span>
               </div>
               <div className="flex justify-between italic text-[10.5pt] mb-1">
@@ -113,7 +101,7 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
               </div>
               <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5">
                 {exp.bullets.map((bullet, j) => (
-                  bullet && <li key={`preview-exp-bullet-${i}-${j}`}>{bullet}</li>
+                  bullet && <li key={j}>{bullet}</li>
                 ))}
               </ul>
             </div>
@@ -128,7 +116,7 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
             {data.sectionTitles?.projects || 'Projects'}
           </h2>
           {data.projects.map((proj, i) => (
-            <div key={`preview-proj-${i}`} className="mb-2">
+            <div key={i} className="mb-2">
               <div className="flex justify-between items-baseline text-[11pt] gap-2">
                 <div className="flex items-baseline gap-1.5 min-w-0">
                   {proj.link ? (
@@ -145,7 +133,7 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
               </div>
               <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5 mt-1">
                 {proj.bullets.map((bullet, j) => (
-                  bullet && <li key={`preview-proj-bullet-${i}-${j}`}>{bullet}</li>
+                  bullet && <li key={j}>{bullet}</li>
                 ))}
               </ul>
             </div>
@@ -155,20 +143,14 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
 
       {/* Custom Sections */}
       {data.customSections?.map((section, i) => (
-        <section key={`preview-section-${i}`} id={`preview-custom-${i}`} className="mb-3">
+        <section key={i} id={`preview-custom-${i}`} className="mb-3">
           <h2 className="text-[12pt] font-bold uppercase border-b border-black mb-1 tracking-wider" style={{ fontVariantCaps: 'small-caps' }}>
             {section.title}
           </h2>
           {section.items.map((item, j) => (
-            <div key={`preview-section-item-${i}-${j}`} className="mb-2">
+            <div key={j} className="mb-2">
               <div className="flex justify-between font-bold text-[11pt]">
-                {item.link ? (
-                  <a href={item.link.startsWith('http') ? item.link : `https://${item.link}`} target="_blank" rel="noopener noreferrer" className="underline decoration-1 underline-offset-2">
-                    {item.title}
-                  </a>
-                ) : (
-                  <span>{item.title}</span>
-                )}
+                <span>{item.title}</span>
                 <span>{abbreviateDate(item.date)}</span>
               </div>
               {item.subtitle && (
@@ -178,7 +160,7 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
               )}
               <ul className="list-disc list-outside ml-5 text-[10pt] space-y-0.5">
                 {item.bullets.map((bullet, k) => (
-                  bullet && <li key={`preview-section-bullet-${i}-${j}-${k}`}>{bullet}</li>
+                  bullet && <li key={k}>{bullet}</li>
                 ))}
               </ul>
             </div>

@@ -1,5 +1,5 @@
 {
   "name": "PushResume",
-  "description": "A web platform that generates shareable resume pages, allowing job seekers to send recruiters a single link with dynamic rendering and RESTful backend services.",
+  "description": "Free Resume Review. Professional LaTeX-style resume builder with ATS scoring and JD optimization.",
   "requestFramePermissions": []
 }
