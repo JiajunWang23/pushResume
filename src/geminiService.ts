@@ -3,19 +3,19 @@ import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { ResumeData } from "./types";
 
 const getAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY || "";
-  // We don't throw here to avoid blocking potential legitimate calls, 
-  // but we should still check if the key is effectively missing in the UI.
+  // Priority: LocalStorage (user-provided) > process.env (developer-provided)
+  const customKey = typeof window !== 'undefined' ? localStorage.getItem('custom_gemini_api_key') : null;
+  const apiKey = (customKey && customKey.trim() !== "") ? customKey : (process.env.GEMINI_API_KEY || "");
+  
   return new GoogleGenAI({ apiKey });
 };
 
 export const parseResume = async (text: string): Promise<ResumeData> => {
   const ai = getAI();
-  // Truncate text to reasonable length to speed up processing
   const truncatedText = text.slice(0, 15000);
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-flash-latest",
     contents: `You are an expert resume parser. Extract information from the following text into structured JSON.
     
     Resume Text:
@@ -157,7 +157,7 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
        Resume: ${JSON.stringify(resume)}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-flash-latest",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -226,7 +226,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
        Bullet: ${bullet}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-flash-latest",
     contents: prompt,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
@@ -239,7 +239,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
 export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-flash-latest",
     contents: `Analyze this resume against the following Job Description (JD) and provide specific, actionable optimization suggestions to improve the match rate.
     
     CRITICAL STANDARDS:
