@@ -322,6 +322,7 @@ export default function App() {
   };
 
   const handleImproveBullet = async (i: number, j: number, type: 'experience' | 'projects') => {
+    if (!(await checkAndPromptApiKey())) return;
     setIsImprovingBullet({ i, j });
     try {
       const currentBullet = type === 'experience' 
@@ -350,6 +351,19 @@ export default function App() {
     console.error(`${context} error:`, error);
     const errorMsg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
     
+    // Check for suspended key, 403, or permission denied
+    if (
+      errorMsg.includes('403') || 
+      errorMsg.includes('suspended') || 
+      errorMsg.includes('PERMISSION_DENIED') || 
+      errorMsg.includes('Permission denied')
+    ) {
+      if (confirm(`The API key context seems to have permission issues or is suspended. This usually means the default platform key is restricted or your provided key is invalid.\n\nWould you like to open the API key settings to provide a valid key?`)) {
+        handleOpenKeyDialog();
+      }
+      return;
+    }
+
     if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('quota')) {
       if (confirm('You have exceeded the API quota. Would you like to set your own API key to continue? (Requires a paid cloud project)')) {
         handleOpenKeyDialog();
@@ -379,7 +393,27 @@ export default function App() {
     }
   };
 
+  const checkAndPromptApiKey = async (): Promise<boolean> => {
+    // Check if we have a key in process.env that isn't a placeholder
+    const envKey = process.env.GEMINI_API_KEY;
+    const isEnvKeyValid = envKey && envKey !== "MY_GEMINI_API_KEY" && envKey !== "undefined" && envKey.trim() !== "";
+    
+    if (isEnvKeyValid) return true;
+
+    // Check if user has selected a key in AI Studio
+    if (window.aistudio?.hasSelectedApiKey) {
+      const platformKey = await window.aistudio.hasSelectedApiKey();
+      if (platformKey) return true;
+    }
+
+    if (confirm("Gemini API Key is required for this feature. Would you like to provide your own API key in the 'Settings > Secrets' menu? (This will enable resume parsing and analysis)")) {
+      handleOpenKeyDialog();
+    }
+    return false;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | React.DragEvent) => {
+    if (!(await checkAndPromptApiKey())) return;
     let file: File | undefined;
     if ('files' in e.target && e.target.files) {
       file = e.target.files[0];
@@ -504,6 +538,7 @@ export default function App() {
 
   const handlePasteText = async (text: string) => {
     if (!text.trim()) return;
+    if (!(await checkAndPromptApiKey())) return;
     setIsParsing(true);
     setParsingStep('AI is analyzing your text...');
     setParsingProgress(20);
@@ -538,6 +573,7 @@ export default function App() {
   };
 
   const handleAnalyze = async () => {
+    if (!(await checkAndPromptApiKey())) return;
     setIsAnalyzing(true);
     try {
       const result = await analyzeResume(resumeData, jd || undefined);
@@ -566,6 +602,7 @@ export default function App() {
       alert('Please provide a Job Description first.');
       return;
     }
+    if (!(await checkAndPromptApiKey())) return;
     setIsParsing(true);
     try {
       const result = await optimizeResumeForJD(resumeData, jd);

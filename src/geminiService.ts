@@ -4,6 +4,8 @@ import { ResumeData } from "./types";
 
 const getAI = () => {
   const apiKey = process.env.GEMINI_API_KEY || "";
+  // We don't throw here to avoid blocking potential legitimate calls, 
+  // but we should still check if the key is effectively missing in the UI.
   return new GoogleGenAI({ apiKey });
 };
 
