@@ -364,6 +364,12 @@ export default function App() {
       return;
     }
 
+    // Gemini overloaded (503): the service layer already retried and tried a fallback model.
+    if (error?.name === 'GeminiBusyError' || /\b503\b|UNAVAILABLE|high demand|overloaded/i.test(errorMsg)) {
+      alert(`${context} failed: Google's AI service is overloaded right now. We retried automatically, but it's still busy. Please try again in a minute.`);
+      return;
+    }
+
     if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED') || errorMsg.includes('quota')) {
       if (confirm('You have exceeded the API quota. Would you like to set your own API key to continue? (Requires a paid cloud project)')) {
         handleOpenKeyDialog();

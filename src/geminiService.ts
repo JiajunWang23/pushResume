@@ -10,12 +10,73 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-export const parseResume = async (text: string): Promise<ResumeData> => {
+
+// ---------------------------------------------------------------------------------------
+// Resilient calls: Gemini returns 503 UNAVAILABLE ("model is experiencing high demand")
+// during load spikes. Retry transient errors with exponential backoff + jitter, then fall
+// back to a lighter model, which has separate capacity and quota.
+// ---------------------------------------------------------------------------------------
+const PRIMARY_MODEL = "gemini-flash-latest";
+const FALLBACK_MODELS = ["gemini-flash-lite-latest"];
+const MAX_ATTEMPTS_PER_MODEL = 3;
+const BASE_DELAY_MS = 1000;
+
+type GenerateParams = Parameters<ReturnType<typeof getAI>["models"]["generateContent"]>[0];
+
+const errorText = (err: any): string =>
+  typeof err === "string" ? err : `${err?.status ?? ""} ${err?.message ?? ""} ${JSON.stringify(err ?? "")}`;
+
+/** Overloaded / server-side / network hiccups: worth retrying the same model. */
+const isTransient = (err: any): boolean =>
+  [500, 502, 503, 504].includes(Number(err?.status)) ||
+  /\b(500|502|503|504)\b|UNAVAILABLE|high demand|overloaded|INTERNAL|DEADLINE_EXCEEDED|fetch failed|Failed to fetch|NetworkError|ECONNRESET|ETIMEDOUT/i
+    .test(errorText(err));
+
+/** Rate limit / quota: retrying the same model right away won't help, another model might. */
+const isRateLimited = (err: any): boolean =>
+  Number(err?.status) === 429 || /\b429\b|RESOURCE_EXHAUSTED|quota/i.test(errorText(err));
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export class GeminiBusyError extends Error {
+  constructor(public cause: unknown) {
+    super("Google's Gemini service is overloaded right now (503). We retried automatically, but it's still busy. Please try again in a minute.");
+    this.name = "GeminiBusyError";
+  }
+}
+
+const generate = async (params: Omit<GenerateParams, "model">) => {
   const ai = getAI();
+  const models = [PRIMARY_MODEL, ...FALLBACK_MODELS];
+  let lastError: unknown;
+
+  for (const [m, model] of models.entries()) {
+    // Fallback models may not support thinkingLevel; drop it rather than risk a 400.
+    const config = m === 0 || !params.config ? params.config : { ...params.config, thinkingConfig: undefined };
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt++) {
+      try {
+        return await ai.models.generateContent({ ...params, config, model });
+      } catch (err) {
+        lastError = err;
+        if (isRateLimited(err)) break;               // try the next model
+        if (!isTransient(err)) throw err;            // bad key, bad request, ...: surface as-is
+        if (attempt < MAX_ATTEMPTS_PER_MODEL) {
+          const delay = BASE_DELAY_MS * 2 ** (attempt - 1) * (0.75 + Math.random() * 0.5);
+          console.warn(`Gemini ${model} busy (attempt ${attempt}/${MAX_ATTEMPTS_PER_MODEL}), retrying in ${Math.round(delay)} ms`);
+          await sleep(delay);
+        }
+      }
+    }
+    if (m < models.length - 1) console.warn(`Gemini ${model} unavailable, falling back to ${models[m + 1]}`);
+  }
+  if (isTransient(lastError)) throw new GeminiBusyError(lastError);
+  throw lastError;
+};
+
+export const parseResume = async (text: string): Promise<ResumeData> => {
   const truncatedText = text.slice(0, 15000);
 
-  const response = await ai.models.generateContent({
-    model: "gemini-flash-latest",
+  const response = await generate({
     contents: `You are an expert resume parser. Extract information from the following text into structured JSON.
     
     Resume Text:
@@ -86,7 +147,6 @@ export const parseResume = async (text: string): Promise<ResumeData> => {
 };
 
 export const analyzeResume = async (resume: ResumeData, jd?: string) => {
-  const ai = getAI();
   const prompt = jd 
     ? `Analyze this resume against the following Job Description (JD). 
        Provide an ATS score (0-100), a list of missing keywords, and specific actionable suggestions.
@@ -156,8 +216,7 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
        
        Resume: ${JSON.stringify(resume)}`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-flash-latest",
+  const response = await generate({
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -193,7 +252,6 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
 };
 
 export const improveBullet = async (bullet: string, jd?: string): Promise<string> => {
-  const ai = getAI();
   const prompt = jd 
     ? `Improve this resume bullet point to better match the following Job Description (JD). 
        
@@ -225,8 +283,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
        
        Bullet: ${bullet}`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-flash-latest",
+  const response = await generate({
     contents: prompt,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
@@ -237,9 +294,7 @@ export const improveBullet = async (bullet: string, jd?: string): Promise<string
 };
 
 export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-flash-latest",
+  const response = await generate({
     contents: `Analyze this resume against the following Job Description (JD) and provide specific, actionable optimization suggestions to improve the match rate.
     
     CRITICAL STANDARDS:
