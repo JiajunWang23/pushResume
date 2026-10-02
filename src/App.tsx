@@ -26,7 +26,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { INITIAL_RESUME, ResumeData, ensureResumeData, Suggestion } from './types';
 import { ResumePreview } from './components/ResumePreview';
 import { generateLatex } from './latexUtils';
-import { parseResume, analyzeResume, optimizeResumeForJD, improveBullet, fetchJobDescriptionFromUrl, extractJdKeywords, JdKeywords } from './geminiService';
+import { parseResume, analyzeResume, optimizeResumeForJD, improveBullet, fetchJobDescriptionFromUrl, extractJdKeywords, JdKeywords, condenseResume, applyCondensePlan, weaveSkillsIntoBullets, BulletRewrite } from './geminiService';
 import { computeAtsScore, computeJdMatch, isResumeEmpty } from './atsScore';
 import { ScoreBreakdown, ImprovementList } from './components/ScoreBreakdown';
 import jsPDF from 'jspdf';
@@ -43,6 +43,23 @@ const PDFJS_VERSION = '3.11.174'; // Stable 3.x version
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_VERSION}/build/pdf.worker.min.js`;
 
 import { abbreviateDate } from './utils/dateUtils';
+
+const SECTION_ORDER = ['contact', 'education', 'skills', 'experience', 'projects', 'format'];
+const SECTION_LABELS: Record<string, string> = {
+  contact: 'Contact', education: 'Education', skills: 'Technical Skills',
+  experience: 'Experience', projects: 'Projects', format: 'Format & length',
+};
+const sectionOf = (s: any) => {
+  const c = String(s?.category || '').toLowerCase();
+  if (c.startsWith('contact')) return 'contact';
+  if (c.startsWith('edu')) return 'education';
+  if (c.startsWith('skill')) return 'skills';
+  if (c.startsWith('exp') || c === 'metrics') return 'experience';
+  if (c.startsWith('proj')) return 'projects';
+  return 'format';
+};
+const sortBySection = (list: any[] = []) =>
+  [...list].sort((a, b) => SECTION_ORDER.indexOf(sectionOf(a)) - SECTION_ORDER.indexOf(sectionOf(b)));
 
 export default function App() {
   const [resumeData, setResumeData] = useState<ResumeData>(INITIAL_RESUME);
@@ -62,12 +79,14 @@ export default function App() {
   const [isFetchingJd, setIsFetchingJd] = useState(false);
   const [jdKeywords, setJdKeywords] = useState<(JdKeywords & { forJd: string }) | null>(null);
   const [activeTab, setActiveTab] = useState<'import' | 'editor' | 'analysis' | 'jd' | 'latex'>('import');
-  const [hoveredSuggestion, setHoveredSuggestion] = useState<{ id: string, category: string } | null>(null);
   const [isImprovingBullet, setIsImprovingBullet] = useState<{i: number, j: number} | null>(null);
   const [editingSuggestion, setEditingSuggestion] = useState<{id: string, text: string, suggestedValue?: string} | null>(null);
   const [zoom, setZoom] = useState(0.85);
   const [isOverPageLimit, setIsOverPageLimit] = useState(false);
   const [overflowPercentage, setOverflowPercentage] = useState(0);
+  const [isFitting, setIsFitting] = useState(false);
+  const [rewrites, setRewrites] = useState<Record<string, BulletRewrite | 'loading'>>({});
+  const [isApplyingAll, setIsApplyingAll] = useState(false);
 
   // Scores are computed from the resume with fixed rules (see atsScore.ts), so they update live,
   // an empty resume scores 0, and every point comes with a reason. Gemini only writes suggestions.
@@ -600,6 +619,134 @@ export default function App() {
     }
   };
 
+  // ---------------- Fit to one page ----------------
+  // 1) shrink the font (content untouched), down to MIN_FIT_FONT;
+  // 2) if still too long, ask Gemini to tighten/remove bullets (undoable with ↶);
+  // 3) grow the font back up as far as it still fits.
+  const PAGE_PX = 1056; // 11in at 96dpi, same as the overflow check
+  const MIN_FIT_FONT = 10;
+  const overflowPx = () => new Promise<number>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() =>
+      resolve(previewRef.current ? previewRef.current.scrollHeight - (PAGE_PX + 2) : 0), 60))));
+
+  const fitToOnePage = async () => {
+    if (isFitting) return;
+    if ((await overflowPx()) <= 0) { alert('Your resume already fits on one page.'); return; }
+    setIsFitting(true);
+    const originalFont = fontSize;
+    let size = fontSize;
+    try {
+      // Step 1: typography only
+      while (size - 0.25 >= MIN_FIT_FONT - 1e-9) {
+        size = Math.round((size - 0.25) * 100) / 100;
+        setFontSize(size);
+        if ((await overflowPx()) <= 0) {
+          alert(`Done: fits on one page at ${size}pt. Only the font size changed; your content is untouched.`);
+          return;
+        }
+      }
+      // Step 2: content (needs Gemini)
+      if (!(await checkAndPromptApiKey())) { setFontSize(originalFont); return; }
+      let data = resumeData;
+      const before = { bullets: [...data.experience, ...data.projects].reduce((n, e) => n + e.bullets.length, 0), projects: data.projects.length };
+      for (let round = 0; round < 2; round++) {
+        const over = await overflowPx();
+        if (over <= 0) break;
+        // bullets are roughly 2/3 of the page, so trim proportionally more than the raw overflow
+        const reducePct = (over / PAGE_PX) * 100 * 1.5 + 5;
+        const plan = await condenseResume(data, reducePct, jd || undefined);
+        data = applyCondensePlan(data, plan);
+        setResumeData(data);
+      }
+      // Step 3: give back font size while it still fits
+      while (size + 0.25 <= originalFont + 1e-9) {
+        setFontSize(size + 0.25);
+        if ((await overflowPx()) > 0) { setFontSize(size); break; }
+        size = Math.round((size + 0.25) * 100) / 100;
+      }
+      const after = { bullets: [...data.experience, ...data.projects].reduce((n, e) => n + e.bullets.length, 0), projects: data.projects.length };
+      const fits = (await overflowPx()) <= 0;
+      alert(`${fits ? 'Done: fits on one page.' : 'Shortened, but it is still slightly over one page. Run it again or remove a section manually.'}\n\n` +
+            `Font: ${size}pt\nBullets: ${before.bullets} → ${after.bullets}` +
+            (after.projects !== before.projects ? `\nProjects: ${before.projects} → ${after.projects}` : '') +
+            `\n\nBullets were tightened by AI. Review them, or press Undo (↶) to restore the previous version.`);
+    } catch (error) {
+      setFontSize(originalFont);
+      handleApiError(error, 'Fit to one page');
+    } finally {
+      setIsFitting(false);
+    }
+  };
+
+  // ---------------- JD Optimizer: one-click fixes ----------------
+  const addSkill = (term: string, field: string) => {
+    setResumeData((prev) => {
+      const key = field as keyof ResumeData['skills'];
+      const current = (prev.skills?.[key] || '').trim();
+      const exists = current.toLowerCase().split(/[,;]/).map((x) => x.trim()).includes(term.toLowerCase());
+      if (exists) return prev;
+      return { ...prev, skills: { ...prev.skills, [key]: current ? `${current}, ${term}` : term } };
+    });
+  };
+
+  const applyRewrite = (rw: BulletRewrite) => {
+    if (rw.section === 'none') return;
+    setResumeData((prev) => {
+      const list = [...(prev[rw.section] as any[])];
+      const entry = list[rw.entryIndex];
+      if (!entry || entry.bullets[rw.bulletIndex] !== rw.before) return prev; // resume changed since the preview
+      const bullets = [...entry.bullets];
+      bullets[rw.bulletIndex] = rw.after;
+      list[rw.entryIndex] = { ...entry, bullets };
+      return { ...prev, [rw.section]: list };
+    });
+  };
+
+  const previewRewrite = async (term: string) => {
+    if (!(await checkAndPromptApiKey())) return;
+    setRewrites((r) => ({ ...r, [term]: 'loading' }));
+    try {
+      const [rw] = await weaveSkillsIntoBullets(resumeData, [term], jd || undefined);
+      setRewrites((r) => ({ ...r, [term]: rw || { term, section: 'none', entryIndex: -1, bulletIndex: -1, before: '', after: '' } }));
+    } catch (error) {
+      setRewrites((r) => { const n = { ...r }; delete n[term]; return n; });
+      handleApiError(error, 'Rewriting a bullet');
+    }
+  };
+
+  const discardRewrite = (term: string) => setRewrites((r) => { const n = { ...r }; delete n[term]; return n; });
+
+  const applyAllImprovements = async () => {
+    if (!jdMatch) return;
+    const adds = jdMatch.improvements.filter((i) => i.action.kind === 'add-skill');
+    const weaves = jdMatch.improvements.filter((i) => i.action.kind === 'mention-in-bullet').map((i) => i.action.term);
+    const msg = [
+      adds.length ? `Add to Skills: ${adds.map((i) => i.action.term).join(', ')}` : '',
+      weaves.length ? `Rewrite bullets to mention: ${weaves.join(', ')}` : '',
+    ].filter(Boolean).join('\n\n');
+    if (!confirm(`${msg}\n\nOnly add skills you have actually used. You can undo (↶) afterwards.\n\nApply all?`)) return;
+    for (const i of adds) if (i.action.kind === 'add-skill') addSkill(i.action.term, i.action.field);
+    if (!weaves.length) return;
+    if (!(await checkAndPromptApiKey())) return;
+    setIsApplyingAll(true);
+    try {
+      const results = await weaveSkillsIntoBullets(resumeData, weaves, jd || undefined);
+      // bullets are replaced in place (never removed), so indexes stay valid; one rewrite per bullet
+      const used = new Set<string>();
+      for (const rw of results) {
+        const k = `${rw.section}:${rw.entryIndex}:${rw.bulletIndex}`;
+        if (rw.section !== 'none' && !used.has(k)) { used.add(k); applyRewrite(rw); }
+      }
+      setRewrites({});
+      const skipped = results.filter((r) => r.section === 'none').map((r) => r.term);
+      if (skipped.length) alert(`No existing bullet clearly used: ${skipped.join(', ')}. Add a bullet about those manually.`);
+    } catch (error) {
+      handleApiError(error, 'Apply all');
+    } finally {
+      setIsApplyingAll(false);
+    }
+  };
+
   const handleFetchJd = async () => {
     if (!(await checkAndPromptApiKey())) return;
     setIsFetchingJd(true);
@@ -939,74 +1086,8 @@ export default function App() {
     }
   };
 
-  const ConnectionLines = () => {
-    const [coords, setCoords] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
-
-    useEffect(() => {
-      if (!hoveredSuggestion) {
-        setCoords(null);
-        return;
-      }
-
-      const updateCoords = () => {
-        const suggestionEl = document.getElementById(`suggestion-${hoveredSuggestion.id}`);
-        // Map category to preview ID
-        let targetId = `preview-${hoveredSuggestion.category}`;
-        if (hoveredSuggestion.category === 'metrics' || hoveredSuggestion.category === 'format') {
-          // Default to experience or skills for these general categories
-          targetId = 'preview-experience';
-        }
-        
-        const previewEl = document.getElementById(targetId);
-
-        if (suggestionEl && previewEl) {
-          const sRect = suggestionEl.getBoundingClientRect();
-          const pRect = previewEl.getBoundingClientRect();
-
-          setCoords({
-            x1: sRect.right,
-            y1: sRect.top + (sRect.height / 2),
-            x2: pRect.left,
-            y2: pRect.top + (pRect.height / 2)
-          });
-        }
-      };
-
-      updateCoords();
-      // Use capture phase for scroll to catch it from any scrollable container
-      window.addEventListener('scroll', updateCoords, true);
-      window.addEventListener('resize', updateCoords);
-      
-      return () => {
-        window.removeEventListener('scroll', updateCoords, true);
-        window.removeEventListener('resize', updateCoords);
-      };
-    }, [hoveredSuggestion]);
-
-    if (!coords) return null;
-
-    return (
-      <div className="fixed inset-0 pointer-events-none z-[100]">
-        <svg className="w-full h-full">
-          <motion.path
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={{ pathLength: 1, opacity: 1 }}
-            d={`M ${coords.x1} ${coords.y1} C ${coords.x1 + 100} ${coords.y1}, ${coords.x2 - 100} ${coords.y2}, ${coords.x2} ${coords.y2}`}
-            stroke="rgba(0,0,0,0.3)"
-            strokeWidth="2"
-            fill="none"
-            strokeDasharray="5,5"
-          />
-          <circle cx={coords.x1} cy={coords.y1} r="4" fill="black" />
-          <circle cx={coords.x2} cy={coords.y2} r="4" fill="black" />
-        </svg>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans">
-      <ConnectionLines />
       {/* Header */}
       <header className="bg-white border-b border-stone-200 sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
@@ -1115,6 +1196,17 @@ export default function App() {
                   <AlertCircle size={16} />
                   <span className="text-xs font-bold">Exceeds 1 Page by {overflowPercentage}%</span>
                 </div>
+              )}
+              {(isOverPageLimit || isFitting) && (
+                <button
+                  onClick={fitToOnePage}
+                  disabled={isFitting}
+                  title="Shrink the font first; if that's not enough, AI tightens your bullets (undoable)"
+                  className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-full text-xs font-bold mr-2 disabled:opacity-60"
+                >
+                  {isFitting ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {isFitting ? 'Fitting…' : 'Fit to 1 page'}
+                </button>
               )}
               
               <div className="flex items-center gap-2 bg-black text-white rounded-full px-1 py-1 shadow-lg">
@@ -1832,12 +1924,18 @@ export default function App() {
                             AI Suggestions
                           </h4>
                           <ul className="space-y-3">
-                            {analysis.suggestions.map((s: Suggestion, i: number) => (
+                            {sortBySection(analysis.suggestions).map((s: Suggestion, i: number, arr: Suggestion[]) => (
+                              <React.Fragment key={s.id || i}>
+                              {(i === 0 || sectionOf(arr[i - 1]) !== sectionOf(s)) && (
+                                <li className="pt-3 pb-1 text-[11px] font-bold uppercase tracking-widest text-stone-500">
+                                  {SECTION_LABELS[sectionOf(s)] || sectionOf(s)}
+                                  <span className="ml-2 text-stone-300 font-medium normal-case tracking-normal">
+                                    {arr.filter((x) => sectionOf(x) === sectionOf(s)).length} suggestion(s)
+                                  </span>
+                                </li>
+                              )}
                               <li 
-                                key={s.id || i} 
                                 id={`suggestion-${s.id}`}
-                                onMouseEnter={() => setHoveredSuggestion({ id: s.id, category: s.category || 'experience' })}
-                                onMouseLeave={() => setHoveredSuggestion(null)}
                                 className="p-5 bg-white border border-stone-100 rounded-2xl shadow-sm space-y-4 transition-all hover:border-black/20"
                               >
                                 <div className="flex items-start justify-between gap-4">
@@ -1950,6 +2048,7 @@ export default function App() {
                                   )}
                                 </div>
                               </li>
+                              </React.Fragment>
                             ))}
                           </ul>
                         </section>}
@@ -2060,7 +2159,16 @@ export default function App() {
                                 {jdKeywords.forJd !== jd && <span className="text-amber-600"> · the JD text changed, click Re-Analyze to update</span>}
                               </p>
                             )}
-                            <ImprovementList items={jdMatch.improvements} />
+                            <ImprovementList
+                              items={jdMatch.improvements}
+                              rewrites={rewrites}
+                              busyAll={isApplyingAll}
+                              onAddSkill={addSkill}
+                              onPreviewRewrite={previewRewrite}
+                              onApplyRewrite={(term) => { const rw = rewrites[term]; if (rw && rw !== 'loading') { applyRewrite(rw); discardRewrite(term); } }}
+                              onDiscardRewrite={discardRewrite}
+                              onApplyAll={applyAllImprovements}
+                            />
                             <ScoreBreakdown categories={jdMatch.categories} />
                           </>
                         )}
@@ -2075,8 +2183,6 @@ export default function App() {
                               <li 
                                 key={s.id || i} 
                                 id={`suggestion-${s.id}`}
-                                onMouseEnter={() => setHoveredSuggestion({ id: s.id, category: s.category || 'experience' })}
-                                onMouseLeave={() => setHoveredSuggestion(null)}
                                 className="p-5 bg-white border border-stone-100 rounded-2xl shadow-sm space-y-4 transition-all hover:border-black/20"
                               >
                                 <div className="flex items-start justify-between gap-4">

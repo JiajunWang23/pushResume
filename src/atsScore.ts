@@ -243,7 +243,27 @@ export function computeAtsScore(r: ResumeData, opts: { jd?: string; overPageLimi
 export interface JdKeywordInput { term: string; aliases?: string[] }
 export interface JdMatchInput { jobTitle?: string; required: JdKeywordInput[]; preferred: JdKeywordInput[] }
 
-export interface Improvement { gain: number; text: string; priority: number }
+export type ImprovementAction =
+  | { kind: "add-skill"; term: string; field: SkillField }
+  | { kind: "mention-in-bullet"; term: string };
+export interface Improvement { gain: number; text: string; priority: number; action: ImprovementAction }
+export type SkillField = "languages" | "frameworks" | "tools" | "libraries";
+
+const LANGS = /^(python|java|javascript|typescript|go|golang|c|c\+\+|c#|rust|kotlin|swift|scala|ruby|php|r|sql|bash|shell|html|css|dart|matlab|perl|haskell|elixir|objective-c|lua|julia)$/i;
+const FRAMEWORKS = /(react|angular|vue|svelte|next|nuxt|node|express|django|flask|fastapi|spring|rails|laravel|\.net|asp\.net|flutter|react native|electron|nest|graphql|tailwind|bootstrap|jquery|redux)/i;
+const LIBS = /(pandas|numpy|scipy|tensorflow|pytorch|keras|scikit|sklearn|matplotlib|seaborn|opencv|hugging ?face|langchain|spark|hadoop|lodash|d3|three\.js)/i;
+
+/** Which Skills line a technology belongs on. */
+export function skillCategory(term: string): SkillField {
+  const t = term.trim();
+  if (LANGS.test(t)) return "languages";
+  if (LIBS.test(t)) return "libraries";
+  if (FRAMEWORKS.test(t)) return "frameworks";
+  return "tools";
+}
+
+/** Requirements that are not a skill you can add to a resume (degrees, years, clearances). */
+const NOT_AUTOMATABLE = /\b(bachelor|master|degree|ph\.?d|diploma|years?|citizen|clearance|authorization|gpa)\b/i;
 export interface JdMatch {
   score: number;
   categories: ScoreCategory[];
@@ -293,8 +313,9 @@ export function computeJdMatch(r: ResumeData, kw: JdMatchInput): JdMatch {
     { ok: reqMiss.length === 0, text: `${reqHit.length}/${req.length} required skills found on your resume` },
     ...(reqMiss.length ? [{ ok: false, text: `Missing: ${reqMiss.map((k) => k.term).join(", ")}` }] : []),
   ]);
-  for (const k of reqMiss) improvements.push({ gain: perReq, priority: 0,
-    text: `Required: add "${k.term}" if you have used it. List it under Skills and show it in a bullet that says where you used it.` });
+  for (const k of reqMiss) if (!NOT_AUTOMATABLE.test(k.term)) improvements.push({ gain: perReq, priority: 0,
+    text: `Required skill "${k.term}" is missing. Add it to your ${skillCategory(k.term)} skills (only if you have used it).`,
+    action: { kind: "add-skill", term: k.term, field: skillCategory(k.term) } });
 
   // Evidence in experience (20): required skills that appear in bullets/roles/project tech, not just the skills list
   const evidRatio = reqHit.length ? (reqHit.length - skillsOnly.length) / reqHit.length : 0;
@@ -304,7 +325,8 @@ export function computeJdMatch(r: ResumeData, kw: JdMatchInput): JdMatch {
   ]);
   const perEvid = reqHit.length ? 20 / reqHit.length : 0;
   for (const k of skillsOnly) improvements.push({ gain: perEvid, priority: 1,
-    text: `"${k.term}" is only in your Skills list. Mention it in an experience or project bullet so recruiters see where you used it.` });
+    text: `"${k.term}" is only in your Skills list. Work it into an experience or project bullet so recruiters see where you used it.`,
+    action: { kind: "mention-in-bullet", term: k.term } });
 
   // Preferred skills (15)
   const perPref = pref.length ? 15 / pref.length : 0;
@@ -312,7 +334,9 @@ export function computeJdMatch(r: ResumeData, kw: JdMatchInput): JdMatch {
     { ok: prefMiss.length === 0, text: pref.length ? `${prefHit.length}/${pref.length} preferred skills found` : "The JD lists no preferred skills" },
     ...(prefMiss.length ? [{ ok: false, text: `Missing: ${prefMiss.map((k) => k.term).join(", ")}` }] : []),
   ]);
-  for (const k of prefMiss) improvements.push({ gain: perPref, priority: 3, text: `Bonus: add "${k.term}" if you have real experience with it.` });
+  for (const k of prefMiss) if (!NOT_AUTOMATABLE.test(k.term)) improvements.push({ gain: perPref, priority: 3,
+    text: `Bonus skill "${k.term}". Add it to your ${skillCategory(k.term)} skills if you have real experience with it.`,
+    action: { kind: "add-skill", term: k.term, field: skillCategory(k.term) } });
 
   // Title alignment (15)
   const target = titleWords(kw.jobTitle || "");
@@ -325,8 +349,7 @@ export function computeJdMatch(r: ResumeData, kw: JdMatchInput): JdMatch {
         ? `Target title "${kw.jobTitle}": ${overlap.length ? `your roles share "${overlap.join(", ")}"` : "none of your role titles match"}`
         : "No job title found in the JD" },
   ]);
-  if (target.length && titleRatio < 1) improvements.push({ gain: 15 * (1 - titleRatio), priority: 2,
-    text: `Align with "${kw.jobTitle}": if accurate, use matching words in a role title, or open with your most relevant experience/projects.` });
+  // Title alignment stays in the breakdown only: renaming a past role isn't an honest automatic fix.
 
   const score = Math.round(cats.reduce((a, c) => a + c.points, 0));
   improvements.sort((a, b) => a.priority - b.priority || b.gain - a.gain);

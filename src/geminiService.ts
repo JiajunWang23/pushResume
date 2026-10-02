@@ -182,6 +182,12 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
           - Include "originalValue" and "suggestedValue".
           - The "text" should explicitly state WHAT is being changed.
           - If the suggestion is to ADD or REMOVE a section or item, clearly state "ADD" or "REMOVE" in the suggestion text.
+
+       COVERAGE (REQUIRED):
+          - Review EVERY section and give suggestions for each one: "contact", "education", "skills", "experience", "projects", plus "format" for page-level issues.
+          - For "experience" and "projects", review EACH entry and give at least one concrete suggestion per entry (rewrite a weak bullet, add a metric placeholder, tighten wording, reorder).
+          - At least 1 suggestion per section that exists in the resume; aim for 10-20 suggestions total. If a section is genuinely strong, still give the single most valuable improvement for it.
+          - Set "category" to exactly one of: contact, education, skills, experience, projects, format.
        
        Resume: ${JSON.stringify(resume)}
        JD: ${jd}`
@@ -213,6 +219,12 @@ export const analyzeResume = async (resume: ResumeData, jd?: string) => {
           - Include "originalValue" and "suggestedValue".
           - The "text" should explicitly state WHAT is being changed.
           - If the suggestion is to ADD or REMOVE a section or item, clearly state "ADD" or "REMOVE" in the suggestion text.
+
+       COVERAGE (REQUIRED):
+          - Review EVERY section and give suggestions for each one: "contact", "education", "skills", "experience", "projects", plus "format" for page-level issues.
+          - For "experience" and "projects", review EACH entry and give at least one concrete suggestion per entry (rewrite a weak bullet, add a metric placeholder, tighten wording, reorder).
+          - At least 1 suggestion per section that exists in the resume; aim for 10-20 suggestions total. If a section is genuinely strong, still give the single most valuable improvement for it.
+          - Set "category" to exactly one of: contact, education, skills, experience, projects, format.
        
        Resume: ${JSON.stringify(resume)}`;
 
@@ -443,4 +455,134 @@ ${jd.slice(0, 12000)}`,
   });
   const parsed = JSON.parse(response.text || "{}");
   return { jobTitle: parsed.jobTitle || "", company: parsed.company || "", required: parsed.required || [], preferred: parsed.preferred || [] };
+};
+
+// ---------------------------------------------------------------------------------------
+// Fit to one page (content step). Gemini only returns shortened/kept bullets per entry by
+// index; everything else (contact, education, GPA, skills, custom sections) is untouched.
+// ---------------------------------------------------------------------------------------
+export interface CondensePlan {
+  experience: { index: number; bullets: string[] }[];
+  projects: { index: number; keep: boolean; bullets: string[] }[];
+}
+
+export const condenseResume = async (resume: ResumeData, reducePercent: number, jd?: string): Promise<CondensePlan> => {
+  const entries = {
+    experience: resume.experience.map((e, index) => ({ index, role: e.role, company: e.company, bullets: e.bullets })),
+    projects: resume.projects.map((p, index) => ({ index, name: p.name, tech: p.tech, bullets: p.bullets })),
+  };
+  const response = await generate({
+    contents: `This resume runs over one page. Shorten the Experience and Projects bullets so the resume's text gets about ${Math.min(60, Math.max(8, Math.round(reducePercent)))}% shorter.
+
+Rules, in order of preference:
+1. Tighten wording first: cut filler words, keep each bullet to one line (about 110 characters max).
+2. Then remove the weakest bullets (least impact, least relevant${jd ? " to the job description" : ""}). Keep at least 2 bullets per experience entry.
+3. Only if still needed, drop the least relevant project (set keep=false). Never drop an experience entry.
+- Never invent facts or numbers. Keep existing numbers, technologies and names exactly.
+- Every bullet ends with a period. No semicolons.
+- Return every entry by its index, in the same order.
+${jd ? `\nJob description (use it to judge relevance):\n${jd.slice(0, 4000)}\n` : ""}
+Entries:
+${JSON.stringify(entries)}`,
+    config: {
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          experience: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
+            index: { type: Type.NUMBER }, bullets: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ["index", "bullets"] } },
+          projects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: {
+            index: { type: Type.NUMBER }, keep: { type: Type.BOOLEAN }, bullets: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ["index", "keep", "bullets"] } },
+        },
+        required: ["experience", "projects"],
+      },
+    },
+  });
+  const plan = JSON.parse(response.text || "{}");
+  return { experience: plan.experience || [], projects: plan.projects || [] };
+};
+
+/** Apply a condense plan to a resume without touching any other field. */
+export const applyCondensePlan = (resume: ResumeData, plan: CondensePlan): ResumeData => {
+  const exp = resume.experience.map((e, i) => {
+    const p = plan.experience.find((x) => x.index === i);
+    const bullets = p?.bullets?.map((b) => b.trim()).filter(Boolean);
+    return bullets && bullets.length >= Math.min(2, e.bullets.length) ? { ...e, bullets } : e;
+  });
+  const projects = resume.projects
+    .map((proj, i) => {
+      const p = plan.projects.find((x) => x.index === i);
+      if (!p) return proj;
+      if (p.keep === false) return null;
+      const bullets = p.bullets?.map((b) => b.trim()).filter(Boolean);
+      return bullets && bullets.length ? { ...proj, bullets } : proj;
+    })
+    .filter(Boolean) as ResumeData["projects"];
+  return { ...resume, experience: exp, projects };
+};
+
+// ---------------------------------------------------------------------------------------
+// JD Optimizer automation: work a skill the user already lists into one existing bullet.
+// ---------------------------------------------------------------------------------------
+export interface BulletRewrite {
+  term: string;
+  section: "experience" | "projects" | "none";
+  entryIndex: number;
+  bulletIndex: number;
+  before: string;
+  after: string;
+}
+
+export const weaveSkillsIntoBullets = async (resume: ResumeData, terms: string[], jd?: string): Promise<BulletRewrite[]> => {
+  const entries = {
+    experience: resume.experience.map((e, i) => ({ entryIndex: i, role: e.role, company: e.company, bullets: e.bullets })),
+    projects: resume.projects.map((p, i) => ({ entryIndex: i, name: p.name, tech: p.tech, bullets: p.bullets })),
+  };
+  const response = await generate({
+    contents: `The candidate lists these skills but never shows where they used them: ${terms.map((t) => `"${t}"`).join(", ")}.
+For EACH skill, pick the single existing bullet where that skill was most plausibly used (matching project tech stack or role), and minimally rewrite that bullet so it names the skill naturally.
+
+Rules:
+- Change as little as possible. Keep every existing fact, number and technology.
+- Never invent metrics, scope or results. Do not add new claims beyond naming the skill.
+- One line, ends with a period, no semicolons.
+- Use a different bullet for each skill when possible.
+- If no bullet plausibly involved the skill, return section "none".
+${jd ? `\nJob description (for wording only):\n${jd.slice(0, 3000)}\n` : ""}
+Resume entries (bulletIndex is the position in "bullets"):
+${JSON.stringify(entries)}`,
+    config: {
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            term: { type: Type.STRING },
+            section: { type: Type.STRING, enum: ["experience", "projects", "none"] },
+            entryIndex: { type: Type.NUMBER },
+            bulletIndex: { type: Type.NUMBER },
+            after: { type: Type.STRING },
+          },
+          required: ["term", "section", "entryIndex", "bulletIndex", "after"],
+        },
+      },
+    },
+  });
+  const raw: any[] = JSON.parse(response.text || "[]");
+  return raw.map((r) => {
+    const list = r.section === "experience" ? resume.experience : r.section === "projects" ? resume.projects : null;
+    const before = list?.[r.entryIndex]?.bullets?.[r.bulletIndex];
+    const valid = !!list && typeof before === "string" && !!r.after?.trim();
+    return {
+      term: r.term,
+      section: valid ? r.section : "none",
+      entryIndex: valid ? r.entryIndex : -1,
+      bulletIndex: valid ? r.bulletIndex : -1,
+      before: valid ? before : "",
+      after: valid ? r.after.trim() : "",
+    } as BulletRewrite;
+  });
 };
