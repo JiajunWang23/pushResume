@@ -73,77 +73,71 @@ const generate = async (params: Omit<GenerateParams, "model">) => {
   throw lastError;
 };
 
-export const parseResume = async (text: string): Promise<ResumeData> => {
-  const truncatedText = text.slice(0, 15000);
+const S = Type.STRING;
+const strArr = { type: Type.ARRAY, items: { type: S } };
+const obj = (props: Record<string, any>) => ({
+  type: Type.OBJECT, properties: props, required: Object.keys(props), propertyOrdering: Object.keys(props),
+});
+const RESUME_SCHEMA = obj({
+  name: { type: S }, phone: { type: S }, email: { type: S }, linkedin: { type: S }, github: { type: S },
+  education: { type: Type.ARRAY, items: obj({ school: { type: S }, degree: { type: S }, date: { type: S } }) },
+  skills: obj({ languages: { type: S }, frameworks: { type: S }, tools: { type: S }, libraries: { type: S } }),
+  experience: { type: Type.ARRAY, items: obj({
+    role: { type: S, description: "Job title / position. Empty string if the resume does not state one. Never put the company name here." },
+    company: { type: S }, date: { type: S }, bullets: strArr }) },
+  projects: { type: Type.ARRAY, items: obj({
+    name: { type: S }, tech: { type: S }, date: { type: S },
+    link: { type: S, description: "Project URL or GitHub repository link if available" }, bullets: strArr }) },
+});
 
+/** Which sections the raw text clearly contains, so we can tell when the model dropped one. */
+const sectionsInText = (text: string) => ({
+  education: /^\s*(education|academic)/im.test(text),
+  experience: /^\s*(work\s+|professional\s+)?experience|^\s*employment/im.test(text),
+  projects: /^\s*(personal\s+|selected\s+|academic\s+)?projects/im.test(text),
+});
+
+/** Sections present in the text but empty in the parse. */
+export const droppedSections = (text: string, r: Partial<ResumeData>): string[] => {
+  const has = sectionsInText(text);
+  return (["education", "experience", "projects"] as const).filter(
+    (k) => has[k] && !((r as any)[k]?.length),
+  );
+};
+
+/** PDF text often arrives as "real - time" / "on - demand"; restore the hyphenated word. */
+export const cleanExtractedText = (text: string) =>
+  text.replace(/(\p{L}) - (?=\p{Ll})/gu, "$1-").replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ");
+
+const parseOnce = async (text: string) => {
   const response = await generate({
-    contents: `You are an expert resume parser. Extract information from the following text into structured JSON.
-    
-    Resume Text:
-    ${truncatedText}`,
+    contents: `You are an expert resume parser. Extract EVERY section of the resume below into structured JSON.
+Include every education entry, every job under experience (even ones with no job title), and every project, with all of their bullets. Do not stop early.
+
+Resume Text:
+${text}`,
     config: {
       responseMimeType: "application/json",
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-      systemInstruction: "Extract resume data accurately. Preserve original wording. If missing, use empty string/array. Ensure 'bullets' are clean strings. DO NOT extract a summary, professional profile, or locations (city/state).",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          phone: { type: Type.STRING },
-          email: { type: Type.STRING },
-          linkedin: { type: Type.STRING },
-          github: { type: Type.STRING },
-          education: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                school: { type: Type.STRING },
-                degree: { type: Type.STRING },
-                date: { type: Type.STRING }
-              }
-            }
-          },
-          skills: {
-            type: Type.OBJECT,
-            properties: {
-              languages: { type: Type.STRING },
-              frameworks: { type: Type.STRING },
-              tools: { type: Type.STRING },
-              libraries: { type: Type.STRING }
-            }
-          },
-          experience: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                role: { type: Type.STRING },
-                date: { type: Type.STRING },
-                company: { type: Type.STRING },
-                bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
-              }
-            }
-          },
-          projects: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                tech: { type: Type.STRING },
-                date: { type: Type.STRING },
-                link: { type: Type.STRING, description: "Project URL or GitHub repository link if available" },
-                bullets: { type: Type.ARRAY, items: { type: Type.STRING } }
-              }
-            }
-          }
-        }
-      }
-    }
+      maxOutputTokens: 8192,
+      systemInstruction: "Extract resume data accurately. Preserve original wording, but join words split by PDF extraction (e.g. 'real - time' -> 'real-time'). If a field is missing in the resume, use an empty string or empty array; never invent values. Ensure 'bullets' are clean strings without bullet symbols. DO NOT extract a summary, professional profile, or locations (city/state).",
+      responseSchema: RESUME_SCHEMA,
+    },
   });
+  return JSON.parse(response.text || "{}") as ResumeData;
+};
 
-  return JSON.parse(response.text || "{}");
+export const parseResume = async (text: string): Promise<ResumeData> => {
+  const input = cleanExtractedText(text).slice(0, 15000);
+  let best = await parseOnce(input);
+  // Lighter models sometimes return only the first few sections. Retry once, keep the fuller result.
+  if (droppedSections(input, best).length) {
+    try {
+      const again = await parseOnce(input);
+      if (droppedSections(input, again).length < droppedSections(input, best).length) best = again;
+    } catch { /* keep the first result */ }
+  }
+  return best;
 };
 
 export const analyzeResume = async (resume: ResumeData, jd?: string) => {

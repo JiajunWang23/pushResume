@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, AlertCircle, RefreshCw, Wand2 } from 'lucide-react';
-import { ScoreCategory, Improvement } from '../atsScore';
+import { ScoreCategory, Improvement, MissingField } from '../atsScore';
 import { BulletRewrite } from '../geminiService';
 
 /** "Why this score": one row per scoring category with points and the reasons behind them. */
@@ -112,3 +112,24 @@ export const ImprovementList: React.FC<ImprovementListProps> = ({
     )}
   </section>
 );
+
+/** Amber callout listing required fields that are empty, e.g. a job with no position. Click to jump to the field. */
+export const MissingInfoBanner: React.FC<{ items: MissingField[]; onJump: (m: MissingField) => void }> = ({ items, onJump }) => {
+  if (!items.length) return null;
+  return (
+    <section className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertCircle size={16} className="text-amber-600" />
+        <h4 className="text-sm font-bold text-amber-900">Missing information ({items.length})</h4>
+      </div>
+      <p className="text-xs text-amber-800 mb-2">Recruiters and ATS expect these on every entry. Click one to fill it in.</p>
+      <ul className="space-y-1">
+        {items.map((m, i) => (
+          <li key={i}>
+            <button onClick={() => onJump(m)} className="text-left text-xs text-amber-900 hover:underline">• {m.text}</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};

@@ -27,8 +27,8 @@ import { INITIAL_RESUME, ResumeData, ensureResumeData, Suggestion } from './type
 import { ResumePreview } from './components/ResumePreview';
 import { generateLatex } from './latexUtils';
 import { parseResume, analyzeResume, optimizeResumeForJD, improveBullet, fetchJobDescriptionFromUrl, extractJdKeywords, JdKeywords, condenseResume, applyCondensePlan, weaveSkillsIntoBullets, BulletRewrite } from './geminiService';
-import { computeAtsScore, computeJdMatch, isResumeEmpty } from './atsScore';
-import { ScoreBreakdown, ImprovementList } from './components/ScoreBreakdown';
+import { computeAtsScore, computeJdMatch, isResumeEmpty, findMissingFields, MissingField } from './atsScore';
+import { ScoreBreakdown, ImprovementList, MissingInfoBanner } from './components/ScoreBreakdown';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ExternalHyperlink } from 'docx';
@@ -91,6 +91,18 @@ export default function App() {
   // Scores are computed from the resume with fixed rules (see atsScore.ts), so they update live,
   // an empty resume scores 0, and every point comes with a reason. Gemini only writes suggestions.
   const atsScore = useMemo(() => computeAtsScore(resumeData, { overPageLimit: isOverPageLimit }), [resumeData, isOverPageLimit]);
+  const missingFields = useMemo(() => findMissingFields(resumeData), [resumeData]);
+  const flag = (section: string, index: number | undefined, field: string) =>
+    missingFields.some((m) => m.section === section && m.index === index && m.field === field);
+  const jumpToField = (m: MissingField) => {
+    setActiveTab('editor');
+    const id = m.index === undefined ? `contact-${m.field}` : `${m.section}-${m.index}-${m.field}`;
+    setTimeout(() => {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el?.focus({ preventScroll: true });
+    }, 350);
+  };
   const jdMatch = useMemo(() => (jdKeywords ? computeJdMatch(resumeData, jdKeywords) : null), [resumeData, jdKeywords]);
   const [hasApiKey, setHasApiKey] = useState(true);
   
@@ -467,14 +479,23 @@ export default function App() {
               return b.transform[5] - a.transform[5];
             });
 
+            // Insert a space only where there is a visible gap between text runs. Always adding one
+            // turns "real-time" into "real - time"; never adding one glues "Veracity registries".
             let lastY = -1;
+            let lastEnd = -1;
             let pageText = '';
             for (const item of items) {
+              if (!item.str) continue;
+              const x = item.transform[4];
+              const fontSize = Math.abs(item.transform[0]) || 10;
               if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
                 pageText += '\n';
+              } else if (lastEnd !== -1 && x - lastEnd > fontSize * 0.15 && !/\s$/.test(pageText) && !/^\s/.test(item.str)) {
+                pageText += ' ';
               }
-              pageText += item.str + ' ';
+              pageText += item.str;
               lastY = item.transform[5];
+              lastEnd = x + (item.width || 0);
             }
             return pageText;
           });
@@ -1346,6 +1367,7 @@ export default function App() {
                     exit={{ opacity: 0, y: -10 }}
                     className="space-y-8"
                   >
+                    <MissingInfoBanner items={missingFields} onJump={jumpToField} />
                     {/* Basic Info */}
                     <section id="basic-info-section">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-4">Basic Information</h3>
@@ -1355,7 +1377,8 @@ export default function App() {
                           <input 
                             value={resumeData.name}
                             onChange={(e) => setResumeData({...resumeData, name: e.target.value})}
-                            className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                            id="contact-name"
+                            className={`w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all ${flag('contact', undefined, 'name') ? '!border-amber-400 !bg-amber-50' : ''}`}
                           />
                         </div>
                         <div className="space-y-1">
@@ -1363,7 +1386,8 @@ export default function App() {
                           <input 
                             value={resumeData.phone}
                             onChange={(e) => setResumeData({...resumeData, phone: e.target.value})}
-                            className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                            id="contact-phone"
+                            className={`w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all ${flag('contact', undefined, 'phone') ? '!border-amber-400 !bg-amber-50' : ''}`}
                           />
                         </div>
                         <div className="space-y-1">
@@ -1371,7 +1395,8 @@ export default function App() {
                           <input 
                             value={resumeData.email}
                             onChange={(e) => setResumeData({...resumeData, email: e.target.value})}
-                            className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                            id="contact-email"
+                            className={`w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all ${flag('contact', undefined, 'email') ? '!border-amber-400 !bg-amber-50' : ''}`}
                           />
                         </div>
                         <div className="space-y-1">
@@ -1495,7 +1520,8 @@ export default function App() {
                                 newEdu[i].school = e.target.value;
                                 setResumeData({...resumeData, education: newEdu});
                               }}
-                              className="col-span-2 px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                              id={`education-${i}-school`}
+                              className={`col-span-2 px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm ${flag('education', i, 'school') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                             <input 
                               placeholder="Degree"
@@ -1505,7 +1531,8 @@ export default function App() {
                                 newEdu[i].degree = e.target.value;
                                 setResumeData({...resumeData, education: newEdu});
                               }}
-                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                              id={`education-${i}-degree`}
+                              className={`px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm ${flag('education', i, 'degree') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                             <input 
                               placeholder="Date (e.g. Aug. 2018 -- May 2021)"
@@ -1515,7 +1542,8 @@ export default function App() {
                                 newEdu[i].date = e.target.value;
                                 setResumeData({...resumeData, education: newEdu});
                               }}
-                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                              id={`education-${i}-date`}
+                              className={`px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm ${flag('education', i, 'date') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                             <input 
                               placeholder="GPA (e.g. 3.9/4.0)"
@@ -1570,7 +1598,8 @@ export default function App() {
                                 newExp[i].role = e.target.value;
                                 setResumeData({...resumeData, experience: newExp});
                               }}
-                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm font-bold"
+                              id={`experience-${i}-role`}
+                              className={`px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm font-bold ${flag('experience', i, 'role') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                             <input 
                               placeholder="Company"
@@ -1580,7 +1609,8 @@ export default function App() {
                                 newExp[i].company = e.target.value;
                                 setResumeData({...resumeData, experience: newExp});
                               }}
-                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                              id={`experience-${i}-company`}
+                              className={`px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm ${flag('experience', i, 'company') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                             <input 
                               placeholder="Date"
@@ -1590,7 +1620,8 @@ export default function App() {
                                 newExp[i].date = e.target.value;
                                 setResumeData({...resumeData, experience: newExp});
                               }}
-                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm"
+                              id={`experience-${i}-date`}
+                              className={`px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm ${flag('experience', i, 'date') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                           </div>
                           <div className="space-y-2">
@@ -1669,7 +1700,8 @@ export default function App() {
                                 newProj[i].name = e.target.value;
                                 setResumeData({...resumeData, projects: newProj});
                               }}
-                              className="px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm font-bold"
+                              id={`projects-${i}-name`}
+                              className={`px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm font-bold ${flag('projects', i, 'name') ? '!border-amber-400 !bg-amber-50' : ''}`}
                             />
                             <input 
                               placeholder="Technologies"
@@ -1880,6 +1912,7 @@ export default function App() {
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-6"
                   >
+                    <MissingInfoBanner items={missingFields} onJump={jumpToField} />
                     {isAnalyzing && (
                       <div className="flex flex-col items-center justify-center py-12">
                         <RefreshCw className="animate-spin text-stone-400 mb-4" size={32} />

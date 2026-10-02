@@ -100,6 +100,41 @@ export function jdKeywords(jd: string, limit = 25): string[] {
 
 const pct = (n: number, d: number) => (d ? Math.round((100 * n) / d) : 0);
 
+export interface MissingField {
+  section: "contact" | "education" | "experience" | "projects";
+  index?: number;
+  field: string;
+  text: string;
+}
+
+/** Fields a recruiter expects on every entry, e.g. a job listed without its position. */
+export function findMissingFields(r: ResumeData): MissingField[] {
+  const out: MissingField[] = [];
+  if (isResumeEmpty(r)) return out;
+  if (!has(r.name)) out.push({ section: "contact", field: "name", text: "Your name is missing" });
+  if (!has(r.email)) out.push({ section: "contact", field: "email", text: "Your email is missing" });
+  if (!has(r.phone)) out.push({ section: "contact", field: "phone", text: "Your phone number is missing" });
+  (r.experience || []).forEach((e, i) => {
+    const who = has(e.company) ? e.company : has(e.role) ? e.role : `Experience #${i + 1}`;
+    if (!has(e.role)) out.push({ section: "experience", index: i, field: "role", text: `${who}: missing job title / position` });
+    if (!has(e.company)) out.push({ section: "experience", index: i, field: "company", text: `${who}: missing company name` });
+    if (!has(e.date)) out.push({ section: "experience", index: i, field: "date", text: `${who}: missing dates` });
+    if (!(e.bullets || []).some(has)) out.push({ section: "experience", index: i, field: "bullets", text: `${who}: no bullet points` });
+  });
+  (r.education || []).forEach((e, i) => {
+    const who = has(e.school) ? e.school : `Education #${i + 1}`;
+    if (!has(e.school)) out.push({ section: "education", index: i, field: "school", text: `${who}: missing school name` });
+    if (!has(e.degree)) out.push({ section: "education", index: i, field: "degree", text: `${who}: missing degree / major` });
+    if (!has(e.date)) out.push({ section: "education", index: i, field: "date", text: `${who}: missing graduation date` });
+  });
+  (r.projects || []).forEach((p, i) => {
+    const who = has(p.name) ? p.name : `Project #${i + 1}`;
+    if (!has(p.name)) out.push({ section: "projects", index: i, field: "name", text: `${who}: missing project name` });
+    if (!(p.bullets || []).some(has)) out.push({ section: "projects", index: i, field: "bullets", text: `${who}: no bullet points` });
+  });
+  return out;
+}
+
 export function computeAtsScore(r: ResumeData, opts: { jd?: string; overPageLimit?: boolean } = {}): AtsScore {
   const bullets = allBullets(r);
   const empty = isResumeEmpty(r);
@@ -121,16 +156,20 @@ export function computeAtsScore(r: ResumeData, opts: { jd?: string; overPageLimi
     ]);
   }
 
-  // 2. Required sections (15)
+  // 2. Required sections (15): the three core sections, and no entry missing a title, organization or date
   {
     const edu = (r.education || []).some((e) => has(e.school) || has(e.degree));
     const skills = skillList(r).length > 0;
     const work = (r.experience || []).some((e) => has(e.role) || (e.bullets || []).some(has)) ||
       (r.projects || []).some((p) => has(p.name) || (p.bullets || []).some(has));
-    add("sections", "Standard sections", 15, ((edu ? 5 : 0) + (skills ? 5 : 0) + (work ? 5 : 0)) / 15, [
+    const gaps = findMissingFields(r).filter((g) => g.section !== "contact");
+    add("sections", "Standard sections", 15, ((edu ? 4 : 0) + (skills ? 4 : 0) + (work ? 4 : 0) + (gaps.length ? 0 : 3)) / 15, [
       { ok: edu, text: edu ? "Education section found" : "Missing an Education section" },
       { ok: skills, text: skills ? "Technical Skills section found" : "Missing a Technical Skills section" },
       { ok: work, text: work ? "Experience/Projects found" : "Missing Experience or Projects" },
+      ...(gaps.length
+        ? gaps.map((g) => ({ ok: false, text: g.text }))
+        : [{ ok: true, text: "Every entry has a title, organization and dates" }]),
     ]);
   }
 
