@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Upload, 
   FileText, 
@@ -19,13 +19,16 @@ import {
   Undo2,
   Redo2,
   ArrowRight,
+  Link as LinkIcon,
   Type as TypeIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { INITIAL_RESUME, ResumeData, ensureResumeData, Suggestion } from './types';
 import { ResumePreview } from './components/ResumePreview';
 import { generateLatex } from './latexUtils';
-import { parseResume, analyzeResume, optimizeResumeForJD, improveBullet } from './geminiService';
+import { parseResume, analyzeResume, optimizeResumeForJD, improveBullet, fetchJobDescriptionFromUrl, extractJdKeywords, JdKeywords } from './geminiService';
+import { computeAtsScore, computeJdMatch, isResumeEmpty } from './atsScore';
+import { ScoreBreakdown, ImprovementList } from './components/ScoreBreakdown';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ExternalHyperlink } from 'docx';
@@ -55,6 +58,9 @@ export default function App() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [jdAnalysis, setJdAnalysis] = useState<any>(null);
   const [jd, setJd] = useState('');
+  const [jdUrl, setJdUrl] = useState('');
+  const [isFetchingJd, setIsFetchingJd] = useState(false);
+  const [jdKeywords, setJdKeywords] = useState<(JdKeywords & { forJd: string }) | null>(null);
   const [activeTab, setActiveTab] = useState<'import' | 'editor' | 'analysis' | 'jd' | 'latex'>('import');
   const [hoveredSuggestion, setHoveredSuggestion] = useState<{ id: string, category: string } | null>(null);
   const [isImprovingBullet, setIsImprovingBullet] = useState<{i: number, j: number} | null>(null);
@@ -62,6 +68,11 @@ export default function App() {
   const [zoom, setZoom] = useState(0.85);
   const [isOverPageLimit, setIsOverPageLimit] = useState(false);
   const [overflowPercentage, setOverflowPercentage] = useState(0);
+
+  // Scores are computed from the resume with fixed rules (see atsScore.ts), so they update live,
+  // an empty resume scores 0, and every point comes with a reason. Gemini only writes suggestions.
+  const atsScore = useMemo(() => computeAtsScore(resumeData, { overPageLimit: isOverPageLimit }), [resumeData, isOverPageLimit]);
+  const jdMatch = useMemo(() => (jdKeywords ? computeJdMatch(resumeData, jdKeywords) : null), [resumeData, jdKeywords]);
   const [hasApiKey, setHasApiKey] = useState(true);
   
   const previewRef = useRef<HTMLDivElement>(null);
@@ -297,28 +308,9 @@ export default function App() {
       return newData;
     });
 
-    // Update score and remove suggestion
-    if (type === 'ats') {
-      setAnalysis((prev: any) => {
-        if (!prev) return null;
-        const impact = (suggestion as any).scoreImpact || 2;
-        return {
-          ...prev,
-          score: Math.min(100, (prev.score || 0) + impact),
-          suggestions: prev.suggestions.filter((s: Suggestion) => s.id !== suggestion.id)
-        };
-      });
-    } else {
-      setJdAnalysis((prev: any) => {
-        if (!prev) return null;
-        const impact = (suggestion as any).scoreImpact || 5;
-        return {
-          ...prev,
-          overallMatchScore: Math.min(100, (prev.overallMatchScore || 0) + impact),
-          suggestions: prev.suggestions.filter((s: Suggestion) => s.id !== suggestion.id)
-        };
-      });
-    }
+    // Remove the applied suggestion. Scores recompute live from the updated resume.
+    const setter = type === 'ats' ? setAnalysis : setJdAnalysis;
+    setter((prev: any) => prev ? { ...prev, suggestions: prev.suggestions.filter((s: Suggestion) => s.id !== suggestion.id) } : null);
   };
 
   const handleImproveBullet = async (i: number, j: number, type: 'experience' | 'projects') => {
@@ -579,6 +571,11 @@ export default function App() {
   };
 
   const handleAnalyze = async () => {
+    if (isResumeEmpty(resumeData)) {
+      setAnalysis({ suggestions: [], missingKeywords: [] });
+      setActiveTab('analysis');
+      return;
+    }
     if (!(await checkAndPromptApiKey())) return;
     setIsAnalyzing(true);
     try {
@@ -603,6 +600,21 @@ export default function App() {
     }
   };
 
+  const handleFetchJd = async () => {
+    if (!(await checkAndPromptApiKey())) return;
+    setIsFetchingJd(true);
+    try {
+      const text = await fetchJobDescriptionFromUrl(jdUrl);
+      setJd(text);
+      setJdAnalysis(null);
+    } catch (error: any) {
+      if (error?.name === 'JdFetchError') alert(error.message);
+      else handleApiError(error, 'Fetching the job posting');
+    } finally {
+      setIsFetchingJd(false);
+    }
+  };
+
   const handleOptimize = async () => {
     if (!jd) {
       alert('Please provide a Job Description first.');
@@ -611,7 +623,12 @@ export default function App() {
     if (!(await checkAndPromptApiKey())) return;
     setIsParsing(true);
     try {
-      const result = await optimizeResumeForJD(resumeData, jd);
+      const needKeywords = !jdKeywords || jdKeywords.forJd !== jd;
+      const [result, kw] = await Promise.all([
+        isResumeEmpty(resumeData) ? Promise.resolve({ suggestions: [] }) : optimizeResumeForJD(resumeData, jd),
+        needKeywords ? extractJdKeywords(jd) : Promise.resolve(null),
+      ]);
+      if (kw) setJdKeywords({ ...kw, forJd: jd });
       
       // Filter out timeline/location suggestions
       if (result.suggestions) {
@@ -1771,22 +1788,6 @@ export default function App() {
                     exit={{ opacity: 0, x: -20 }}
                     className="space-y-6"
                   >
-                    {!analysis && !isAnalyzing && (
-                      <div className="text-center py-12">
-                        <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <Sparkles className="text-stone-300" />
-                        </div>
-                        <h4 className="font-bold">Ready to Analyze?</h4>
-                        <p className="text-sm text-stone-500 mt-2 mb-6">Get your ATS score and improvement suggestions.</p>
-                        <button 
-                          onClick={handleAnalyze}
-                          className="px-6 py-2 bg-black text-white rounded-full text-sm font-bold"
-                        >
-                          Start Analysis
-                        </button>
-                      </div>
-                    )}
-
                     {isAnalyzing && (
                       <div className="flex flex-col items-center justify-center py-12">
                         <RefreshCw className="animate-spin text-stone-400 mb-4" size={32} />
@@ -1794,40 +1795,41 @@ export default function App() {
                       </div>
                     )}
 
-                    {analysis && (
+                    {(
                       <div className="space-y-6">
                         <div className="bg-stone-50 p-6 rounded-3xl border border-stone-200 text-center relative group">
-                          <button 
-                            onClick={handleAnalyze}
-                            disabled={isAnalyzing}
-                            className="absolute top-4 right-4 p-2 text-stone-400 hover:text-black hover:bg-white rounded-full transition-all shadow-sm opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                            title="Re-evaluate ATS Score"
-                          >
-                            <RefreshCw size={16} className={isAnalyzing ? 'animate-spin' : ''} />
-                          </button>
-                          <div className="text-5xl font-black mb-2">{analysis.score}</div>
+                          <div className="text-5xl font-black mb-2">{atsScore.score}</div>
                           <div className="text-xs font-bold uppercase tracking-widest text-stone-400">ATS Score</div>
+                          <p className="text-[11px] text-stone-400 mt-1">Calculated from your resume with fixed rules and updated as you edit. See the breakdown below.</p>
                           <button 
                             onClick={handleAnalyze}
-                            disabled={isAnalyzing}
-                            className="mt-4 px-4 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 mx-auto disabled:opacity-50"
+                            disabled={isAnalyzing || atsScore.isEmpty}
+                            className="mt-4 px-4 py-1.5 bg-black hover:bg-stone-800 text-white rounded-full text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 mx-auto disabled:opacity-40"
                           >
-                            <RefreshCw size={12} className={isAnalyzing ? 'animate-spin' : ''} />
-                            Re-evaluate Score
+                            {isAnalyzing ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                            {analysis ? 'Refresh AI suggestions' : 'Get AI suggestions'}
                           </button>
                           <div className="mt-4 h-2 bg-stone-200 rounded-full overflow-hidden">
                             <motion.div 
                               initial={{ width: 0 }}
-                              animate={{ width: `${analysis.score}%` }}
+                              animate={{ width: `${atsScore.score}%` }}
                               className="h-full bg-black"
                             />
                           </div>
                         </div>
 
-                        <section>
+                        {atsScore.isEmpty && (
+                          <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-sm text-amber-800">
+                            Your resume is empty, so the score is 0. Import a resume or fill in the Editor, then analyze again.
+                          </div>
+                        )}
+
+                        <ScoreBreakdown categories={atsScore.categories} />
+
+                        {analysis?.suggestions?.length > 0 && <section>
                           <h4 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3 flex items-center gap-2">
                             <CheckCircle2 size={14} className="text-green-500" />
-                            Suggestions
+                            AI Suggestions
                           </h4>
                           <ul className="space-y-3">
                             {analysis.suggestions.map((s: Suggestion, i: number) => (
@@ -1950,9 +1952,9 @@ export default function App() {
                               </li>
                             ))}
                           </ul>
-                        </section>
+                        </section>}
 
-                        {analysis.missingKeywords && (
+                        {analysis?.missingKeywords?.length > 0 && (
                           <section>
                             <h4 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3 flex items-center gap-2">
                               <AlertCircle size={14} className="text-amber-500" />
@@ -1981,6 +1983,32 @@ export default function App() {
                     className="space-y-6"
                   >
                     <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Job posting link</label>
+                      <div className="flex gap-2">
+                        <div className="flex-1 flex items-center gap-2 px-4 bg-stone-50 border border-stone-200 rounded-2xl focus-within:ring-2 focus-within:ring-black">
+                          <LinkIcon size={16} className="text-stone-400 shrink-0" />
+                          <input
+                            type="url"
+                            value={jdUrl}
+                            onChange={(e) => setJdUrl(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && jdUrl && !isFetchingJd) handleFetchJd(); }}
+                            placeholder="https://boards.greenhouse.io/... or any job page"
+                            className="w-full py-3 bg-transparent outline-none text-sm"
+                          />
+                        </div>
+                        <button
+                          onClick={handleFetchJd}
+                          disabled={!jdUrl || isFetchingJd}
+                          className="px-5 bg-stone-900 text-white rounded-2xl text-sm font-bold flex items-center gap-2 disabled:opacity-50"
+                        >
+                          {isFetchingJd ? <RefreshCw className="animate-spin" size={16} /> : <ArrowRight size={16} />}
+                          {isFetchingJd ? 'Reading…' : 'Fetch'}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-stone-400">Paste a link and we'll pull the job description in. Pages behind a login (like LinkedIn) can't be read; paste the text below instead.</p>
+                    </div>
+
+                    <div className="space-y-2">
                       <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Target Job Description</label>
                       <textarea 
                         value={jd}
@@ -2005,28 +2033,42 @@ export default function App() {
                           <div className="flex justify-between items-end mb-4">
                             <div>
                               <h4 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-1">JD Match Score</h4>
-                              <div className="text-4xl font-bold">{jdAnalysis.overallMatchScore}%</div>
+                              <div className="text-4xl font-bold">{jdMatch?.score ?? 0}%</div>
                             </div>
                             <div className="text-right">
                               <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">Status</div>
-                              <div className={`text-xs font-bold ${jdAnalysis.overallMatchScore > 80 ? 'text-green-400' : 'text-amber-400'}`}>
-                                {jdAnalysis.overallMatchScore > 80 ? 'Strong Match' : 'Needs Optimization'}
+                              <div className={`text-xs font-bold ${(jdMatch?.score ?? 0) >= 80 ? 'text-green-400' : 'text-amber-400'}`}>
+                                {(jdMatch?.score ?? 0) >= 80 ? 'Strong Match' : 'Needs Optimization'}
                               </div>
                             </div>
                           </div>
                           <div className="w-full h-2 bg-stone-800 rounded-full overflow-hidden">
                             <motion.div 
                               initial={{ width: 0 }}
-                              animate={{ width: `${jdAnalysis.overallMatchScore}%` }}
-                              className={`h-full ${jdAnalysis.overallMatchScore > 80 ? 'bg-green-500' : 'bg-amber-500'}`}
+                              animate={{ width: `${jdMatch?.score ?? 0}%` }}
+                              className={`h-full ${(jdMatch?.score ?? 0) >= 80 ? 'bg-green-500' : 'bg-amber-500'}`}
                             />
                           </div>
                         </div>
 
-                        <section className="space-y-4">
+                        {jdMatch && jdKeywords && (
+                          <>
+                            {jdKeywords.jobTitle && (
+                              <p className="text-sm text-stone-500 -mt-4">
+                                Matched against <span className="font-semibold text-stone-800">{jdKeywords.jobTitle}</span>
+                                {jdKeywords.company ? <> at <span className="font-semibold text-stone-800">{jdKeywords.company}</span></> : null}
+                                {jdKeywords.forJd !== jd && <span className="text-amber-600"> · the JD text changed, click Re-Analyze to update</span>}
+                              </p>
+                            )}
+                            <ImprovementList items={jdMatch.improvements} />
+                            <ScoreBreakdown categories={jdMatch.categories} />
+                          </>
+                        )}
+
+                        {jdAnalysis.suggestions?.length > 0 && <section className="space-y-4">
                           <h4 className="text-xs font-bold uppercase tracking-widest text-stone-400 flex items-center gap-2">
                             <Sparkles size={14} className="text-amber-500" />
-                            Optimization Suggestions
+                            AI rewrite suggestions
                           </h4>
                           <ul className="space-y-4">
                             {jdAnalysis.suggestions.map((s: Suggestion, i: number) => (
@@ -2144,7 +2186,7 @@ export default function App() {
                               </li>
                             ))}
                           </ul>
-                        </section>
+                        </section>}
                       </div>
                     )}
                   </motion.div>

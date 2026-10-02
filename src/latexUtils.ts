@@ -64,7 +64,7 @@ export const generateLatex = (data: ResumeData): string => {
 
   const projectsStr = (data.projects || []).map(proj => `
       \\resumeProjectHeading
-          {${proj.link ? `\\href{${proj.link.startsWith('http') ? proj.link : `https://${proj.link}`}}{\\underline{\\textbf{${escapeLatex(proj.name)}}}}` : `\\textbf{${escapeLatex(proj.name)}}`} $|$ \\emph{${escapeLatex(proj.tech)}}}{${escapeLatex(proj.date)}}
+          {${proj.link ? `\\href{${proj.link.startsWith('http') ? proj.link : `https://${proj.link}`}}{\\underline{\\textbf{${escapeLatex(proj.name)}}}}` : `\\textbf{${escapeLatex(proj.name)}}`}${proj.tech ? ` $|$ \\emph{${escapeLatex(proj.tech)}}` : ''}}{${escapeLatex(proj.date)}}
           \\resumeItemListStart
             ${proj.bullets.filter(b => b).map(b => `\\resumeItem{${escapeLatex(b)}}`).join("\n            ")}
           \\resumeItemListEnd`).join("");
@@ -190,9 +190,12 @@ export const generateLatex = (data: ResumeData): string => {
 %----------HEADING----------
 \\begin{center}
     \\textbf{\\Huge \\scshape ${escapeLatex(data.name)}} \\\\ \\vspace{1pt}
-    \\small ${escapeLatex(data.phone)} $|$ \\href{mailto:${data.email}}{\\underline{${escapeLatex(data.email)}}} $|$
-    \\href{https://${data.linkedin}}{\\underline{${escapeLatex(data.linkedin)}}} $|$
-    \\href{https://${data.github}}{\\underline{${escapeLatex(data.github)}}}
+    \\small ${[
+      data.phone ? escapeLatex(data.phone) : '',
+      data.email ? `\\href{mailto:${data.email}}{\\underline{${escapeLatex(data.email)}}}` : '',
+      data.linkedin ? `\\href{https://${data.linkedin}}{\\underline{${escapeLatex(data.linkedin)}}}` : '',
+      data.github ? `\\href{https://${data.github}}{\\underline{${escapeLatex(data.github)}}}` : '',
+    ].filter(Boolean).join(' $|$ ')}
 \\end{center}
 
 %-----------EDUCATION-----------

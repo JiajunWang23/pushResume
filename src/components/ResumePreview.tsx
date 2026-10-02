@@ -43,9 +43,15 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
           {data.name}
         </h1>
         <div className="text-[10pt]">
-          {data.phone} | <a href={`mailto:${data.email}`} className="underline">{data.email}</a> | {' '}
-          {data.linkedin && <><a href={`https://${data.linkedin}`} className="underline">{data.linkedin}</a> | </>}
-          {data.github && <a href={`https://${data.github}`} className="underline">{data.github}</a>}
+          {/* Only filled-in fields are shown, so empty fields never leave stray "|" separators */}
+          {[
+            data.phone && <span key="phone">{data.phone}</span>,
+            data.email && <a key="email" href={`mailto:${data.email}`} className="underline">{data.email}</a>,
+            data.linkedin && <a key="linkedin" href={`https://${data.linkedin}`} className="underline">{data.linkedin}</a>,
+            data.github && <a key="github" href={`https://${data.github}`} className="underline">{data.github}</a>,
+          ].filter(Boolean).map((item, i) => (
+            <React.Fragment key={i}>{i > 0 && ' | '}{item}</React.Fragment>
+          ))}
         </div>
       </div>
 
@@ -126,8 +132,10 @@ export const ResumePreview = forwardRef<HTMLDivElement, Props>(({ data, id, isOv
                   ) : (
                     <span className="font-bold shrink-0">{proj.name}</span>
                   )}
-                  <span className="text-gray-400">|</span>
-                  <span className="italic">{proj.tech}</span>
+                  {proj.tech && <>
+                    <span className="text-gray-400">|</span>
+                    <span className="italic">{proj.tech}</span>
+                  </>}
                 </div>
                 <span className="shrink-0 text-[10.5pt]">{abbreviateDate(proj.date)}</span>
               </div>

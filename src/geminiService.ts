@@ -363,3 +363,84 @@ export const optimizeResumeForJD = async (resume: ResumeData, jd: string) => {
 
   return JSON.parse(response.text || "{}");
 };
+
+// ---------------------------------------------------------------------------------------
+// JD from a link: browsers can't fetch most job boards (CORS), so Gemini's URL Context tool
+// reads the page server-side and returns the posting text.
+// ---------------------------------------------------------------------------------------
+export class JdFetchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "JdFetchError";
+  }
+}
+
+export const fetchJobDescriptionFromUrl = async (url: string): Promise<string> => {
+  const clean = url.trim();
+  if (!/^https?:\/\/\S+\.\S+/i.test(clean)) throw new JdFetchError("Please enter a full link starting with https://");
+  const response = await generate({
+    contents: `Open this job posting and return the job description text: ${clean}
+
+Return plain text only, in this order:
+Title: <job title>
+Company: <company name>
+<then the responsibilities, requirements/qualifications and preferred qualifications, copied as written>
+
+Do not summarize or add commentary. If the page cannot be read, needs a login, or is not a job posting, reply with exactly: NOT_FOUND`,
+    config: { tools: [{ urlContext: {} }] },
+  });
+  const text = (response.text || "").trim();
+  if (!text || text.startsWith("NOT_FOUND") || text.length < 200) {
+    throw new JdFetchError("Couldn't read a job description from that link (it may need a login, e.g. LinkedIn). Paste the job description text instead.");
+  }
+  return text;
+};
+
+// ---------------------------------------------------------------------------------------
+// JD keywords: the LLM only *extracts* what the job asks for (once per JD); the match score
+// itself is computed deterministically in atsScore.ts, so it is explainable and stable.
+// ---------------------------------------------------------------------------------------
+export interface JdKeyword { term: string; aliases: string[] }
+export interface JdKeywords { jobTitle: string; company: string; required: JdKeyword[]; preferred: JdKeyword[] }
+
+export const extractJdKeywords = async (jd: string): Promise<JdKeywords> => {
+  const keywordSchema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        term: { type: Type.STRING },
+        aliases: { type: Type.ARRAY, items: { type: Type.STRING } },
+      },
+      required: ["term", "aliases"],
+    },
+  };
+  const response = await generate({
+    contents: `Extract what this job requires, for matching against a resume.
+
+Rules:
+- "required": hard skills, technologies, tools, domains and qualifications listed as required / must-have (max 15).
+- "preferred": items listed as preferred / nice-to-have / bonus (max 10).
+- Use short canonical terms as they'd appear on a resume ("Kubernetes", "PostgreSQL", "REST APIs", "Distributed systems", "Bachelor's in Computer Science").
+- "aliases": common alternative spellings/abbreviations ("k8s", "Postgres", "RESTful"). Empty array if none.
+- Skip soft skills (communication, teamwork) and years-of-experience phrases.
+
+Job description:
+${jd.slice(0, 12000)}`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          jobTitle: { type: Type.STRING },
+          company: { type: Type.STRING },
+          required: keywordSchema,
+          preferred: keywordSchema,
+        },
+        required: ["jobTitle", "required", "preferred"],
+      },
+    },
+  });
+  const parsed = JSON.parse(response.text || "{}");
+  return { jobTitle: parsed.jobTitle || "", company: parsed.company || "", required: parsed.required || [], preferred: parsed.preferred || [] };
+};
